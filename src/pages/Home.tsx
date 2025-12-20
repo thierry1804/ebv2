@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import { ChevronRight, ArrowRight } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 import { ProductCard } from '../components/product/ProductCard';
 import { Button } from '../components/ui/Button';
 import { supabase } from '../lib/supabase';
 import { HeroSliderConfig, SectionConfig, InstagramConfig, NewsletterConfig, HeroSlide } from '../types';
 import { useCategories } from '../hooks/useCategories';
 import { useProducts } from '../hooks/useProducts';
+import { HeroSlider } from '../components/hero/HeroSlider';
 
 export default function Home() {
   const { categories } = useCategories();
@@ -26,7 +26,6 @@ export default function Home() {
   const [salesConfig, setSalesConfig] = useState<SectionConfig | null>(null);
   const [instagramConfig, setInstagramConfig] = useState<InstagramConfig | null>(null);
   const [newsletterConfig, setNewsletterConfig] = useState<NewsletterConfig | null>(null);
-  const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
 
   // Valeurs par défaut
   const defaultHeroSlides: HeroSlide[] = [
@@ -59,20 +58,6 @@ export default function Home() {
   useEffect(() => {
     loadConfigs();
   }, []);
-
-  // Gestion du carousel automatique
-  useEffect(() => {
-    if (!heroConfig || !heroConfig.autoplay) return;
-
-    const interval = setInterval(() => {
-      const activeSlides = heroConfig.slides.filter((s) => s.isActive);
-      if (activeSlides.length > 0) {
-        setCurrentSlideIndex((prev) => (prev + 1) % activeSlides.length);
-      }
-    }, heroConfig.autoplayInterval || 5000);
-
-    return () => clearInterval(interval);
-  }, [heroConfig]);
 
   const loadConfigs = async () => {
     try {
@@ -131,77 +116,17 @@ export default function Home() {
   };
 
   const heroSlides = heroConfig?.slides?.filter((s) => s.isActive) || defaultHeroSlides.filter((s) => s.isActive);
-  const currentSlide = heroSlides[currentSlideIndex] || heroSlides[0];
 
   return (
     <div className="space-y-16 pb-16">
       {/* Hero Slider */}
-      {currentSlide && (
-        <section className="relative h-[600px] overflow-hidden">
-          <motion.div
-            key={currentSlideIndex}
-            className="absolute inset-0"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.5 }}
-          >
-            <div className="relative h-full">
-              <img
-                src={currentSlide.image}
-                alt={currentSlide.title}
-                className="w-full h-full object-cover"
-              />
-              <div className="absolute inset-0 bg-black/30"></div>
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="text-center text-white px-4">
-                  <motion.h1
-                    className="text-5xl md:text-6xl font-heading font-bold mb-4"
-                    initial={{ y: 20, opacity: 0 }}
-                    animate={{ y: 0, opacity: 1 }}
-                    transition={{ delay: 0.2 }}
-                  >
-                    {currentSlide.title}
-                  </motion.h1>
-                  <motion.p
-                    className="text-xl md:text-2xl mb-8"
-                    initial={{ y: 20, opacity: 0 }}
-                    animate={{ y: 0, opacity: 1 }}
-                    transition={{ delay: 0.3 }}
-                  >
-                    {currentSlide.subtitle}
-                  </motion.p>
-                  <motion.div
-                    initial={{ y: 20, opacity: 0 }}
-                    animate={{ y: 0, opacity: 1 }}
-                    transition={{ delay: 0.4 }}
-                  >
-                    <Link to={currentSlide.link}>
-                      <Button size="lg" variant="primary">
-                        {currentSlide.buttonText || 'Découvrir'}
-                        <ChevronRight className="ml-2" size={20} />
-                      </Button>
-                    </Link>
-                  </motion.div>
-                </div>
-              </div>
-            </div>
-          </motion.div>
-          {heroSlides.length > 1 && (
-            <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex gap-2">
-              {heroSlides.map((_, index) => (
-                <button
-                  key={index}
-                  onClick={() => setCurrentSlideIndex(index)}
-                  className={`w-2 h-2 rounded-full transition-all ${
-                    index === currentSlideIndex ? 'bg-white' : 'bg-white/50'
-                  }`}
-                  aria-label={`Aller au slide ${index + 1}`}
-                />
-              ))}
-            </div>
-          )}
-        </section>
+      {heroSlides.length > 0 && (
+        <HeroSlider
+          slides={heroSlides}
+          autoplay={heroConfig?.autoplay !== false}
+          autoplayInterval={heroConfig?.autoplayInterval || 5000}
+          height="600px"
+        />
       )}
 
       {/* Catégories */}

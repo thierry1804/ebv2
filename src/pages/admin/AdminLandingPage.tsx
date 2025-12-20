@@ -1,16 +1,19 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import { LandingPageConfig, HeroSliderConfig, HeaderLogoConfig, PromotionalBannerConfig, SectionConfig, InstagramConfig, NewsletterConfig } from '../../types';
-import { Save, Edit, Eye, EyeOff, Plus, Trash2, Image as ImageIcon } from 'lucide-react';
+import { Save, Edit, Eye, EyeOff, Plus, Trash2, Image as ImageIcon, Upload, X } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Modal } from '../../components/ui/Modal';
 import toast from 'react-hot-toast';
+import { convertToWebP } from '../../utils/imageUtils';
 
 export default function AdminLandingPage() {
   const [configs, setConfigs] = useState<LandingPageConfig[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [formData, setFormData] = useState<any>(null);
+  const [uploadingSlides, setUploadingSlides] = useState<Set<number>>(new Set());
+  const fileInputRefs = useRef<{ [key: number]: HTMLInputElement | null }>({});
 
   useEffect(() => {
     loadConfigs();
@@ -77,6 +80,94 @@ export default function AdminLandingPage() {
     } catch (error: any) {
       console.error('Erreur:', error);
       toast.error('Erreur lors de la mise à jour');
+    }
+  };
+
+  const handleHeroImageUpload = async (file: File, slideIndex: number) => {
+    if (!file.type.startsWith('image/')) {
+      toast.error('Veuillez sélectionner un fichier image');
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('L\'image ne doit pas dépasser 5 Mo');
+      return;
+    }
+
+    setUploadingSlides((prev) => new Set(prev).add(slideIndex));
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast.error('Vous devez être connecté');
+        setUploadingSlides((prev) => {
+          const newSet = new Set(prev);
+          newSet.delete(slideIndex);
+          return newSet;
+        });
+        return;
+      }
+
+      // Convertir l'image en WebP
+      const webpFile = await convertToWebP(file);
+
+      // Générer un nom de fichier unique
+      const fileExt = webpFile.name.split('.').pop();
+      const fileName = `hero/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+
+      // Upload vers Supabase Storage
+      const { error: uploadError } = await supabase.storage
+        .from('hero')
+        .upload(fileName, webpFile, {
+          cacheControl: '3600',
+          upsert: false,
+        });
+
+      if (uploadError) {
+        if (uploadError.message.includes('Bucket not found')) {
+          toast.error('Le bucket "hero" n\'existe pas. Veuillez le créer dans Supabase Storage.');
+        } else {
+          throw uploadError;
+        }
+        setUploadingSlides((prev) => {
+          const newSet = new Set(prev);
+          newSet.delete(slideIndex);
+          return newSet;
+        });
+        return;
+      }
+
+      // Obtenir l'URL publique
+      const { data: { publicUrl } } = supabase.storage
+        .from('hero')
+        .getPublicUrl(fileName);
+
+      // Mettre à jour le slide avec la nouvelle URL
+      const data = formData as HeroSliderConfig;
+      const newSlides = [...(data.slides || [])];
+      newSlides[slideIndex] = { ...newSlides[slideIndex], image: publicUrl };
+      setFormData({ ...data, slides: newSlides });
+
+      toast.success('Image uploadée avec succès');
+    } catch (error: any) {
+      console.error('Erreur lors de l\'upload:', error);
+      toast.error(error.message || 'Erreur lors de l\'upload de l\'image');
+    } finally {
+      setUploadingSlides((prev) => {
+        const newSet = new Set(prev);
+        newSet.delete(slideIndex);
+        return newSet;
+      });
+    }
+  };
+
+  const handleHeroFileSelect = (e: React.ChangeEvent<HTMLInputElement>, slideIndex: number) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      handleHeroImageUpload(file, slideIndex);
+    }
+    // Réinitialiser l'input pour permettre de sélectionner le même fichier à nouveau
+    if (fileInputRefs.current[slideIndex]) {
+      fileInputRefs.current[slideIndex]!.value = '';
     }
   };
 
@@ -210,17 +301,65 @@ export default function AdminLandingPage() {
                       }}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
                     />
-                    <input
-                      type="text"
-                      placeholder="URL de l'image"
-                      value={slide.image || ''}
-                      onChange={(e) => {
-                        const newSlides = [...(data.slides || [])];
-                        newSlides[index] = { ...slide, image: e.target.value };
-                        setFormData({ ...data, slides: newSlides });
-                      }}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                    />
+                    <div className="space-y-2">
+                      <label className="block text-xs font-medium text-gray-700">Image du slide</label>
+                      {slide.image ? (
+                        <div className="relative">
+                          <img
+                            src={slide.image}
+                            alt={`Prévisualisation slide ${index + 1}`}
+                            className="w-full h-32 object-cover rounded-lg border border-gray-200"
+                          />
+                          <button
+                            onClick={() => {
+                              const newSlides = [...(data.slides || [])];
+                              newSlides[index] = { ...slide, image: '' };
+                              setFormData({ ...data, slides: newSlides });
+                            }}
+                            className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600 transition-colors"
+                            title="Supprimer l'image"
+                          >
+                            <X size={14} />
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="border-2 border-dashed border-gray-300 rounded-lg p-4">
+                          <input
+                            ref={(el) => {
+                              fileInputRefs.current[index] = el;
+                            }}
+                            type="file"
+                            accept="image/*"
+                            onChange={(e) => handleHeroFileSelect(e, index)}
+                            className="hidden"
+                            id={`hero-image-${index}`}
+                          />
+                          <label
+                            htmlFor={`hero-image-${index}`}
+                            className="flex flex-col items-center justify-center cursor-pointer"
+                          >
+                            <Upload
+                              size={24}
+                              className={`mb-2 text-gray-400 ${uploadingSlides.has(index) ? 'animate-pulse' : ''}`}
+                            />
+                            <span className="text-sm text-gray-600">
+                              {uploadingSlides.has(index) ? 'Upload en cours...' : 'Cliquez pour uploader une image'}
+                            </span>
+                          </label>
+                        </div>
+                      )}
+                      <input
+                        type="text"
+                        placeholder="Ou entrez une URL d'image"
+                        value={slide.image || ''}
+                        onChange={(e) => {
+                          const newSlides = [...(data.slides || [])];
+                          newSlides[index] = { ...slide, image: e.target.value };
+                          setFormData({ ...data, slides: newSlides });
+                        }}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                      />
+                    </div>
                     <input
                       type="text"
                       placeholder="Lien"

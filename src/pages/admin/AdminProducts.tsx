@@ -8,6 +8,7 @@ import { Offcanvas } from '../../components/ui/Offcanvas';
 import { Modal } from '../../components/ui/Modal';
 import { useCategories } from '../../hooks/useCategories';
 import { predefinedColors as sharedPredefinedColors } from '../../config/colors';
+import { convertToWebP } from '../../utils/imageUtils';
 
 export default function AdminProducts() {
   const { categories } = useCategories();
@@ -218,8 +219,11 @@ export default function AdminProducts() {
         return null;
       }
 
+      // Convertir l'image en WebP
+      const webpFile = await convertToWebP(file);
+
       // Générer un nom de fichier unique avec timestamp et random pour éviter les collisions
-      const fileExt = file.name.split('.').pop();
+      const fileExt = webpFile.name.split('.').pop();
       const timestamp = Date.now();
       const random = Math.random().toString(36).substring(7);
       const fileName = `products/${timestamp}-${random}.${fileExt}`;
@@ -227,7 +231,7 @@ export default function AdminProducts() {
       // Upload vers Supabase Storage
       const { error: uploadError } = await supabase.storage
         .from('products')
-        .upload(fileName, file, {
+        .upload(fileName, webpFile, {
           cacheControl: '3600',
           upsert: false,
         });

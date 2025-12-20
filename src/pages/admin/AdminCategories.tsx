@@ -5,6 +5,7 @@ import { Plus, Edit, Trash2, Save, Eye, EyeOff, ArrowUp, ArrowDown, Upload, X } 
 import { Button } from '../../components/ui/Button';
 import { Offcanvas } from '../../components/ui/Offcanvas';
 import toast from 'react-hot-toast';
+import { convertToWebP } from '../../utils/imageUtils';
 
 interface DatabaseCategory {
   id: string;
@@ -131,14 +132,17 @@ export default function AdminCategories() {
         return;
       }
 
+      // Convertir l'image en WebP
+      const webpFile = await convertToWebP(file);
+
       // Générer un nom de fichier unique
-      const fileExt = file.name.split('.').pop();
+      const fileExt = webpFile.name.split('.').pop();
       const fileName = `categories/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
 
       // Upload vers Supabase Storage
       const { error: uploadError } = await supabase.storage
         .from('categories')
-        .upload(fileName, file, {
+        .upload(fileName, webpFile, {
           cacheControl: '3600',
           upsert: false,
         });
