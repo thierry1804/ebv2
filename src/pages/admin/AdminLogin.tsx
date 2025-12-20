@@ -4,7 +4,7 @@ import { useAdminAuth } from '../../context/AdminAuthContext';
 import { Button } from '../../components/ui/Button';
 import toast from 'react-hot-toast';
 
-export function AdminLogin() {
+export default function AdminLogin() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);

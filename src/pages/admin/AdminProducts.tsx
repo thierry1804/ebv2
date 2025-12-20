@@ -9,7 +9,7 @@ import { Modal } from '../../components/ui/Modal';
 import { useCategories } from '../../hooks/useCategories';
 import { predefinedColors as sharedPredefinedColors } from '../../config/colors';
 
-export function AdminProducts() {
+export default function AdminProducts() {
   const { categories } = useCategories();
   const [products, setProducts] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(true);

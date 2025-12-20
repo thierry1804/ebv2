@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 import { Heart } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 
-export function Wishlist() {
+export default function Wishlist() {
   const { items } = useWishlist();
 
   if (items.length === 0) {

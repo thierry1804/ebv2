@@ -18,7 +18,7 @@ interface DatabaseCategory {
   updated_at: string;
 }
 
-export function AdminCategories() {
+export default function AdminCategories() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isOffcanvasOpen, setIsOffcanvasOpen] = useState(false);

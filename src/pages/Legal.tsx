@@ -72,7 +72,7 @@ const legalContent: Record<string, { title: string; content: string }> = {
   },
 };
 
-export function Legal() {
+export default function Legal() {
   const location = useLocation();
   const page = location.pathname.replace('/', '');
   const content = legalContent[page] || legalContent['mentions-legales'];

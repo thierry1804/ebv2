@@ -7,7 +7,7 @@ import { Link } from 'react-router-dom';
 
 type Tab = 'profile' | 'orders' | 'addresses' | 'wishlist' | 'settings';
 
-export function Account() {
+export default function Account() {
   const { user, isAuthenticated, logout } = useAuth();
   const { items: wishlistItems } = useWishlist();
   const [activeTab, setActiveTab] = useState<Tab>('profile');

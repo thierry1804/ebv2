@@ -6,7 +6,7 @@ import { Button } from '../../components/ui/Button';
 import toast from 'react-hot-toast';
 import { Modal } from '../../components/ui/Modal';
 
-export function AdminContent() {
+export default function AdminContent() {
   const [contents, setContents] = useState<SiteContent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);

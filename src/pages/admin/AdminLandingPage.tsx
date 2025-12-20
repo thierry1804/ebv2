@@ -6,7 +6,7 @@ import { Button } from '../../components/ui/Button';
 import { Modal } from '../../components/ui/Modal';
 import toast from 'react-hot-toast';
 
-export function AdminLandingPage() {
+export default function AdminLandingPage() {
   const [configs, setConfigs] = useState<LandingPageConfig[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [editingKey, setEditingKey] = useState<string | null>(null);

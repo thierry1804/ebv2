@@ -5,7 +5,7 @@ import { Button } from '../components/ui/Button';
 import { formatPrice } from '../utils/formatters';
 import { QuantitySelector } from '../components/product/QuantitySelector';
 
-export function Cart() {
+export default function Cart() {
   const { items, removeItem, updateQuantity, getSubtotal, getTotal, clearCart } = useCart();
   const shippingCost = getSubtotal() >= 200000 ? 0 : 10000;
 

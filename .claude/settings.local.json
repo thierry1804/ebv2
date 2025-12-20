@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir:*)",
+      "Bash(npm run build:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(npm run dev:*)",
+      "WebFetch(domain:reactjs.org)",
+      "WebFetch(domain:legacy.reactjs.org)",
+      "Bash(ls:*)",
+      "Bash(grep:*)"
+    ]
+  }
+}

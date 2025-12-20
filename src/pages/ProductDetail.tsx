@@ -13,7 +13,7 @@ import { formatPrice } from '../utils/formatters';
 import { useProducts } from '../hooks/useProducts';
 import toast from 'react-hot-toast';
 
-export function ProductDetail() {
+export default function ProductDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { addItem } = useCart();

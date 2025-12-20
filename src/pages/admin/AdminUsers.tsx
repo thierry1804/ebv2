@@ -13,7 +13,7 @@ interface User {
   last_login?: string;
 }
 
-export function AdminUsers() {
+export default function AdminUsers() {
   const [users, setUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');

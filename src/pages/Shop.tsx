@@ -6,7 +6,7 @@ import { formatPrice } from '../utils/formatters';
 import { useCategories } from '../hooks/useCategories';
 import { useProducts } from '../hooks/useProducts';
 
-export function Shop() {
+export default function Shop() {
   const { categories } = useCategories();
   const { products } = useProducts();
   const [searchParams] = useSearchParams();

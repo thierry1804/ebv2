@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase';
 import { Users, FileText, ShoppingBag, TrendingUp, AlertCircle } from 'lucide-react';
 import { useAdminAuth } from '../../context/AdminAuthContext';
 
-export function AdminDashboard() {
+export default function AdminDashboard() {
   const { adminUser } = useAdminAuth();
   const [stats, setStats] = useState({
     users: 0,

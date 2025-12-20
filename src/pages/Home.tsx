@@ -9,7 +9,7 @@ import { HeroSliderConfig, SectionConfig, InstagramConfig, NewsletterConfig, Her
 import { useCategories } from '../hooks/useCategories';
 import { useProducts } from '../hooks/useProducts';
 
-export function Home() {
+export default function Home() {
   const { categories } = useCategories();
   const { products } = useProducts();
   const newArrivals = products.filter((p) => p.isNew).slice(0, 4);

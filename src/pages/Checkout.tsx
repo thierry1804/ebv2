@@ -9,7 +9,7 @@ import toast from 'react-hot-toast';
 
 type Step = 'shipping' | 'payment' | 'confirmation';
 
-export function Checkout() {
+export default function Checkout() {
   const navigate = useNavigate();
   const { items, getSubtotal, getTotal, clearCart } = useCart();
   const { user } = useAuth();
