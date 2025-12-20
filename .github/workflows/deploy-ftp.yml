@@ -56,6 +56,7 @@ jobs:
           server: ${{ secrets.FTP_SERVER }}
           username: ${{ secrets.FTP_USERNAME }}
           password: ${{ secrets.FTP_PASSWORD }}
+          protocol: ${{ secrets.FTP_PROTOCOL || 'ftp' }}
           local-dir: ./dist/
           server-dir: ./
           exclude: |
@@ -64,4 +65,7 @@ jobs:
             **/node_modules/**
             **/.DS_Store
           dangerous-clean-slate: false
+          log-level: verbose
+          state-name: ftp-deploy-state
+          dry-run: false
 
