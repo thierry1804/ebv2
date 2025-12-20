@@ -1,0 +1,32 @@
+# Configuration Nginx pour React Router SPA
+# À utiliser si votre serveur utilise Nginx au lieu d'Apache
+
+server {
+    listen 80;
+    server_name eshopbyvalsue.mg www.eshopbyvalsue.mg;
+    root /var/www/html;
+    index index.html;
+
+    # Gzip compression
+    gzip on;
+    gzip_types text/plain text/css text/javascript application/javascript application/json;
+    gzip_min_length 1000;
+
+    # Cache pour les assets statiques
+    location ~* \.(ico|jpg|jpeg|png|gif|svg|webp|js|css|woff|woff2|ttf|eot)$ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+
+    # Pas de cache pour index.html
+    location = /index.html {
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
+        add_header Pragma "no-cache";
+        add_header Expires 0;
+    }
+
+    # Rediriger toutes les requêtes vers index.html pour React Router
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}
