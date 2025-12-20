@@ -18,24 +18,63 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Vérifier la session existante
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setAdminUser(session?.user ?? null);
+    // Vérifier si Supabase est correctement configuré
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
+    const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+    
+    if (!supabaseUrl || !supabaseAnonKey || supabaseUrl.includes('placeholder')) {
+      // Supabase n'est pas configuré, on passe en mode non-authentifié
       setIsLoading(false);
-    });
+      return;
+    }
 
-    // Écouter les changements d'authentification
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setAdminUser(session?.user ?? null);
+    let subscription: { unsubscribe: () => void } | null = null;
+
+    try {
+      // Vérifier la session existante
+      supabase.auth.getSession().then(({ data: { session }, error }) => {
+        if (error) {
+          console.error('Erreur lors de la récupération de la session:', error);
+        } else {
+          setAdminUser(session?.user ?? null);
+        }
+        setIsLoading(false);
+      }).catch((error) => {
+        console.error('Erreur lors de la récupération de la session:', error);
+        setIsLoading(false);
+      });
+
+      // Écouter les changements d'authentification
+      const {
+        data: { subscription: authSubscription },
+      } = supabase.auth.onAuthStateChange((_event, session) => {
+        setAdminUser(session?.user ?? null);
+        setIsLoading(false);
+      });
+
+      subscription = authSubscription;
+    } catch (error) {
+      console.error('Erreur lors de l\'initialisation de l\'authentification:', error);
       setIsLoading(false);
-    });
+    }
 
-    return () => subscription.unsubscribe();
+    return () => {
+      if (subscription) {
+        subscription.unsubscribe();
+      }
+    };
   }, []);
 
   const login = async (email: string, password: string): Promise<boolean> => {
+    // Vérifier si Supabase est configuré
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
+    const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+    
+    if (!supabaseUrl || !supabaseAnonKey || supabaseUrl.includes('placeholder')) {
+      toast.error('Supabase n\'est pas configuré. Veuillez configurer les variables d\'environnement.');
+      return false;
+    }
+
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
@@ -57,15 +96,26 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
 
       return false;
     } catch (error) {
+      console.error('Erreur lors de la connexion:', error);
       toast.error('Erreur lors de la connexion');
       return false;
     }
   };
 
   const logout = async (): Promise<void> => {
-    await supabase.auth.signOut();
-    setAdminUser(null);
-    toast.success('Déconnexion réussie');
+    try {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
+      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+      
+      if (supabaseUrl && supabaseAnonKey && !supabaseUrl.includes('placeholder')) {
+        await supabase.auth.signOut();
+      }
+      setAdminUser(null);
+      toast.success('Déconnexion réussie');
+    } catch (error) {
+      console.error('Erreur lors de la déconnexion:', error);
+      setAdminUser(null);
+    }
   };
 
   return (
