@@ -11,6 +11,7 @@ jobs:
   deploy:
     name: Build et déploiement FTP
     runs-on: ubuntu-latest
+    environment: prod
     
     steps:
       - name: Checkout du code
