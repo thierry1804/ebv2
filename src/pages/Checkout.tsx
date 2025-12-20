@@ -308,7 +308,11 @@ export function Checkout() {
                     <div className="flex-1">
                       <p className="text-sm font-medium text-text-dark">{item.product.name}</p>
                       <p className="text-xs text-text-dark/80">
-                        {item.size} • {item.color} • x{item.quantity}
+                        {item.size && `${item.size}`}
+                        {item.size && item.color && ' • '}
+                        {item.color && `${item.color}`}
+                        {(item.size || item.color) && ' • '}
+                        x{item.quantity}
                       </p>
                       <p className="text-sm font-semibold text-text-dark">
                         {formatPrice(item.price * item.quantity)}

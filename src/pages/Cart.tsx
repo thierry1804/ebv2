@@ -61,9 +61,13 @@ export function Cart() {
                   >
                     {item.product.name}
                   </Link>
-                  <p className="text-sm text-text-dark/80 mb-2">
-                    Taille: {item.size} • Couleur: {item.color}
-                  </p>
+                  {((item.size || item.color) && (
+                    <p className="text-sm text-text-dark/80 mb-2">
+                      {item.size && `Taille: ${item.size}`}
+                      {item.size && item.color && ' • '}
+                      {item.color && `Couleur: ${item.color}`}
+                    </p>
+                  ))}
                   <p className="text-lg font-semibold text-text-dark">
                     {formatPrice(item.price)}
                   </p>

@@ -6,6 +6,9 @@ export function LoadingSpinner() {
   );
 }
 
+// Alias pour compatibilité
+export const Loading = LoadingSpinner;
+
 export function Skeleton({ className = '' }: { className?: string }) {
   return (
     <div className={`animate-pulse bg-neutral-support rounded ${className}`}></div>

@@ -2,10 +2,13 @@ import { useState, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ProductCard } from '../components/product/ProductCard';
 import { Button } from '../components/ui/Button';
-import { products, categories } from '../data/products';
 import { formatPrice } from '../utils/formatters';
+import { useCategories } from '../hooks/useCategories';
+import { useProducts } from '../hooks/useProducts';
 
 export function Shop() {
+  const { categories } = useCategories();
+  const { products } = useProducts();
   const [searchParams] = useSearchParams();
   const [showFilters, setShowFilters] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState(
@@ -94,6 +97,8 @@ export function Shop() {
 
     return filtered;
   }, [
+    products,
+    categories,
     searchQuery,
     selectedCategory,
     filterNew,

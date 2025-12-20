@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { Star, Heart, ShoppingCart, ArrowLeft } from 'lucide-react';
-import { products } from '../data/products';
 import { ProductGallery } from '../components/product/ProductGallery';
 import { SizeSelector } from '../components/product/SizeSelector';
 import { ColorSelector } from '../components/product/ColorSelector';
@@ -11,6 +10,7 @@ import { ProductCard } from '../components/product/ProductCard';
 import { useCart } from '../context/CartContext';
 import { useWishlist } from '../context/WishlistContext';
 import { formatPrice } from '../utils/formatters';
+import { useProducts } from '../hooks/useProducts';
 import toast from 'react-hot-toast';
 
 export function ProductDetail() {
@@ -18,6 +18,7 @@ export function ProductDetail() {
   const navigate = useNavigate();
   const { addItem } = useCart();
   const { isInWishlist, toggleWishlist } = useWishlist();
+  const { products } = useProducts();
 
   const product = products.find((p) => p.id === id);
 
@@ -49,8 +50,17 @@ export function ProductDetail() {
     .slice(0, 4);
 
   const handleAddToCart = () => {
-    if (!selectedSize || !selectedColor) {
-      toast.error('Veuillez sélectionner une taille et une couleur');
+    // Vérifier uniquement les attributs qui existent pour le produit
+    const hasSizes = product.sizes && product.sizes.length > 0;
+    const hasColors = product.colors && product.colors.length > 0;
+    
+    if (hasSizes && !selectedSize) {
+      toast.error('Veuillez sélectionner une taille');
+      return;
+    }
+    
+    if (hasColors && !selectedColor) {
+      toast.error('Veuillez sélectionner une couleur');
       return;
     }
 
@@ -140,16 +150,20 @@ export function ProductDetail() {
 
           {/* Sélecteurs */}
           <div className="space-y-6 mb-8">
-            <SizeSelector
-              sizes={product.sizes}
-              selectedSize={selectedSize}
-              onSelectSize={setSelectedSize}
-            />
-            <ColorSelector
-              colors={product.colors}
-              selectedColor={selectedColor}
-              onSelectColor={setSelectedColor}
-            />
+            {product.sizes && product.sizes.length > 0 && (
+              <SizeSelector
+                sizes={product.sizes}
+                selectedSize={selectedSize}
+                onSelectSize={setSelectedSize}
+              />
+            )}
+            {product.colors && product.colors.length > 0 && (
+              <ColorSelector
+                colors={product.colors}
+                selectedColor={selectedColor}
+                onSelectColor={setSelectedColor}
+              />
+            )}
             <QuantitySelector
               quantity={quantity}
               onIncrease={() => setQuantity((q) => q + 1)}

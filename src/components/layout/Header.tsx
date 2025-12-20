@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Search, User, Heart, ShoppingCart, Menu, X } from 'lucide-react';
 import { useCart } from '../../context/CartContext';
@@ -7,13 +7,18 @@ import { useAuth } from '../../context/AuthContext';
 import { Badge } from '../ui/Badge';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
-import { categories } from '../../data/products';
+import { supabase } from '../../lib/supabase';
+import { HeaderLogoConfig, PromotionalBannerConfig } from '../../types';
+import { useCategories } from '../../hooks/useCategories';
 
 export function Header() {
+  const { categories } = useCategories();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isMegaMenuOpen, setIsMegaMenuOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [logoConfig, setLogoConfig] = useState<HeaderLogoConfig>({ text: 'ByValsue', imageUrl: null, link: '/' });
+  const [bannerConfig, setBannerConfig] = useState<PromotionalBannerConfig>({ text: 'Livraison gratuite à partir de 200 000 Ar • Retours gratuits', isVisible: true });
   const { getTotalItems } = useCart();
   const { items: wishlistItems } = useWishlist();
   const { isAuthenticated, logout } = useAuth();
@@ -21,6 +26,47 @@ export function Header() {
 
   const cartItemsCount = getTotalItems();
   const wishlistCount = wishlistItems.length;
+
+  useEffect(() => {
+    loadHeaderConfigs();
+  }, []);
+
+  const loadHeaderConfigs = async () => {
+    try {
+      // Charger toutes les configs pour pouvoir vérifier is_active
+      const { data, error } = await supabase
+        .from('landing_page_config')
+        .select('*')
+        .in('section_key', ['header.logo', 'header.promotional_banner']);
+
+      if (error) {
+        console.warn('Erreur lors du chargement des configurations du header:', error);
+        // Les valeurs par défaut sont déjà définies dans useState
+        return;
+      }
+
+      if (data) {
+        data.forEach((config) => {
+          // Ne charger que si la section est active
+          if (!config.is_active) {
+            // Si la bannière est désactivée, la masquer
+            if (config.section_key === 'header.promotional_banner') {
+              setBannerConfig({ text: '', isVisible: false });
+            }
+            return;
+          }
+
+          if (config.section_key === 'header.logo') {
+            setLogoConfig(config.config_data as HeaderLogoConfig);
+          } else if (config.section_key === 'header.promotional_banner') {
+            setBannerConfig(config.config_data as PromotionalBannerConfig);
+          }
+        });
+      }
+    } catch (error) {
+      console.error('Erreur lors du chargement des configurations:', error);
+    }
+  };
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,16 +81,28 @@ export function Header() {
     <>
       <header className="sticky top-0 z-40 bg-white shadow-sm">
         {/* Bannière promotionnelle */}
-        <div className="bg-secondary text-white text-center py-2 text-sm font-medium">
-          <p>Livraison gratuite à partir de 200 000 Ar • Retours gratuits</p>
-        </div>
+        {bannerConfig.isVisible && (
+          <div className="bg-secondary text-white text-center py-2 text-sm font-medium">
+            <p>{bannerConfig.text}</p>
+          </div>
+        )}
 
         {/* Navigation principale */}
         <nav className="container mx-auto px-4">
           <div className="flex items-center justify-between h-16">
             {/* Logo */}
-            <Link to="/" className="flex items-center gap-2">
-              <span className="text-2xl font-heading font-bold text-secondary">ByValsue</span>
+            <Link to={logoConfig.link} className="flex items-center gap-2">
+              {logoConfig.imageUrl ? (
+                <img
+                  src={logoConfig.imageUrl}
+                  alt={logoConfig.text}
+                  className="h-8 w-auto"
+                />
+              ) : (
+                <span className="text-2xl font-heading font-bold text-secondary">
+                  {logoConfig.text}
+                </span>
+              )}
             </Link>
 
             {/* Menu desktop */}

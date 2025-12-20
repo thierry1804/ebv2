@@ -21,8 +21,8 @@ export interface CartItem {
   id: string;
   productId: string;
   product: Product;
-  size: string;
-  color: string;
+  size: string | null;
+  color: string | null;
   quantity: number;
   price: number; // Prix au moment de l'ajout
 }
@@ -92,5 +92,103 @@ export interface Category {
   slug: string;
   image?: string;
   description?: string;
+}
+
+// Types pour le backoffice
+export interface AdminUser {
+  id: string;
+  email: string;
+  firstName?: string;
+  lastName?: string;
+  role: 'admin' | 'editor' | 'viewer';
+  createdAt: string;
+  lastLogin?: string;
+}
+
+export interface SiteContent {
+  id: string;
+  key: string;
+  title: string;
+  content: string;
+  type: 'text' | 'html' | 'json';
+  updatedAt: string;
+  updatedBy: string;
+}
+
+export interface DatabaseBlogPost {
+  id: string;
+  title: string;
+  excerpt: string;
+  content: string;
+  image: string;
+  author: string;
+  published_at: string;
+  category: string;
+  tags: string[];
+  is_published: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+// Types pour les configurations de la landing page
+export interface LandingPageConfig {
+  id: string;
+  section_key: string;
+  section_name: string;
+  config_data: any; // JSONB data
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  updated_by?: string;
+}
+
+export interface HeroSlide {
+  title: string;
+  subtitle: string;
+  image: string;
+  link: string;
+  buttonText: string;
+  isActive: boolean;
+}
+
+export interface HeroSliderConfig {
+  slides: HeroSlide[];
+  autoplay: boolean;
+  autoplayInterval: number;
+}
+
+export interface HeaderLogoConfig {
+  text: string;
+  imageUrl: string | null;
+  link: string;
+}
+
+export interface PromotionalBannerConfig {
+  text: string;
+  isVisible: boolean;
+}
+
+export interface SectionConfig {
+  title: string;
+  seeAllLink?: string;
+  seeAllText?: string;
+  isVisible: boolean;
+}
+
+export interface InstagramConfig {
+  title: string;
+  isVisible: boolean;
+  posts: Array<{
+    image: string;
+    link: string;
+  }>;
+}
+
+export interface NewsletterConfig {
+  title: string;
+  description: string;
+  placeholder: string;
+  buttonText: string;
+  isVisible: boolean;
 }
 
