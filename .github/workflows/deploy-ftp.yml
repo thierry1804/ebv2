@@ -28,6 +28,27 @@ jobs:
       - name: Build du projet
         run: npm run build
 
+      - name: Vérification des secrets FTP
+        run: |
+          if [ -z "${{ secrets.FTP_SERVER }}" ]; then
+            echo "❌ Erreur: Le secret FTP_SERVER n'est pas configuré"
+            echo "📝 Veuillez configurer les secrets dans GitHub:"
+            echo "   Settings > Secrets and variables > Actions"
+            echo "   - FTP_SERVER (ex: ftp.example.com)"
+            echo "   - FTP_USERNAME (votre nom d'utilisateur)"
+            echo "   - FTP_PASSWORD (votre mot de passe)"
+            exit 1
+          fi
+          if [ -z "${{ secrets.FTP_USERNAME }}" ]; then
+            echo "❌ Erreur: Le secret FTP_USERNAME n'est pas configuré"
+            exit 1
+          fi
+          if [ -z "${{ secrets.FTP_PASSWORD }}" ]; then
+            echo "❌ Erreur: Le secret FTP_PASSWORD n'est pas configuré"
+            exit 1
+          fi
+          echo "✅ Tous les secrets FTP sont configurés"
+
       - name: Déploiement via FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
