@@ -13,15 +13,22 @@ export default defineConfig({
         manualChunks: (id) => {
           // Vendor chunks - bibliothèques externes
           if (id.includes('node_modules')) {
-            // React et React DOM
-            if (id.includes('react') || id.includes('react-dom') || id.includes('react-router')) {
+            // React et toutes ses dépendances dans le même chunk
+            // Cela garantit que React est toujours disponible avant les autres vendors
+            if (
+              id.includes('react') || 
+              id.includes('react-dom') || 
+              id.includes('react-router') ||
+              id.includes('framer-motion') || // Dépend de React
+              id.includes('react-hot-toast')   // Dépend de React
+            ) {
               return 'vendor-react';
             }
             // Supabase
             if (id.includes('@supabase')) {
               return 'vendor-supabase';
             }
-            // Autres vendors
+            // Autres vendors (lucide-react, etc. - pas de dépendance React)
             return 'vendor';
           }
           
@@ -43,5 +50,7 @@ export default defineConfig({
       },
     },
     chunkSizeWarningLimit: 1000, // Augmenter la limite à 1MB pour éviter les warnings
+    // S'assurer que les chemins sont relatifs pour fonctionner partout
+    assetsDir: 'assets',
   },
 });
