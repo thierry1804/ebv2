@@ -24,6 +24,7 @@ const Legal = lazy(() => import('./pages/Legal'));
 
 // Lazy load des pages admin
 const AdminLogin = lazy(() => import('./pages/admin/AdminLogin'));
+const AdminSignup = lazy(() => import('./pages/admin/AdminSignup')); // PAGE TEMPORAIRE - À SUPPRIMER
 const AdminDashboard = lazy(() => import('./pages/admin/AdminDashboard'));
 const AdminArticles = lazy(() => import('./pages/admin/AdminArticles'));
 const AdminUsers = lazy(() => import('./pages/admin/AdminUsers'));
@@ -81,6 +82,7 @@ function App() {
 
                   {/* Routes admin */}
                   <Route path="/admin/login" element={<AdminLogin />} />
+                  <Route path="/admin/signup" element={<AdminSignup />} /> {/* TEMPORAIRE - À SUPPRIMER */}
                   <Route
                     path="/admin/*"
                     element={
