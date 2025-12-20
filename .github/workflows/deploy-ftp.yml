@@ -26,7 +26,24 @@ jobs:
       - name: Installation des dépendances
         run: npm ci
 
+      - name: Vérification des secrets Supabase
+        run: |
+          if [ -z "${{ secrets.VITE_SUPABASE_URL }}" ]; then
+            echo "⚠️  Avertissement: Le secret VITE_SUPABASE_URL n'est pas configuré"
+            echo "📝 Le build continuera mais Supabase ne fonctionnera pas en production"
+          fi
+          if [ -z "${{ secrets.VITE_SUPABASE_ANON_KEY }}" ]; then
+            echo "⚠️  Avertissement: Le secret VITE_SUPABASE_ANON_KEY n'est pas configuré"
+            echo "📝 Le build continuera mais Supabase ne fonctionnera pas en production"
+          fi
+          if [ -n "${{ secrets.VITE_SUPABASE_URL }}" ] && [ -n "${{ secrets.VITE_SUPABASE_ANON_KEY }}" ]; then
+            echo "✅ Les secrets Supabase sont configurés"
+          fi
+
       - name: Build du projet
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
         run: npm run build
 
       - name: Vérification des secrets FTP
