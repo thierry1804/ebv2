@@ -2,39 +2,18 @@ import { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 
 // ID de mesure Google Analytics (GA4)
-// Remplacez par votre propre ID de mesure
-const GA_MEASUREMENT_ID = import.meta.env.VITE_GA_MEASUREMENT_ID || 'G-XXXXXXXXXX';
+// Le script est chargé dans index.html, on utilise l'ID ici pour le suivi des pages
+const GA_MEASUREMENT_ID = import.meta.env.VITE_GA_MEASUREMENT_ID || 'G-1D5HC9RGEZ';
 
-// Initialiser Google Analytics
+// Initialiser Google Analytics - Le script est déjà chargé dans index.html
+// Ce hook gère uniquement le suivi des changements de page pour les SPAs
 export function useGoogleAnalytics() {
   const location = useLocation();
 
+  // Suivre les changements de page (pour les Single Page Applications)
   useEffect(() => {
-    // Charger le script Google Analytics si l'ID est configuré
-    if (GA_MEASUREMENT_ID && GA_MEASUREMENT_ID !== 'G-XXXXXXXXXX') {
-      // Charger gtag.js
-      const script1 = document.createElement('script');
-      script1.async = true;
-      script1.src = `https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}`;
-      document.head.appendChild(script1);
-
-      // Initialiser gtag
-      window.dataLayer = window.dataLayer || [];
-      function gtag(...args: any[]) {
-        window.dataLayer.push(args);
-      }
-      (window as any).gtag = gtag;
-
-      gtag('js', new Date());
-      gtag('config', GA_MEASUREMENT_ID, {
-        page_path: location.pathname + location.search,
-      });
-    }
-  }, []);
-
-  // Suivre les changements de page
-  useEffect(() => {
-    if (GA_MEASUREMENT_ID && GA_MEASUREMENT_ID !== 'G-XXXXXXXXXX' && (window as any).gtag) {
+    // Attendre que gtag soit disponible (chargé depuis index.html)
+    if ((window as any).gtag && GA_MEASUREMENT_ID) {
       (window as any).gtag('config', GA_MEASUREMENT_ID, {
         page_path: location.pathname + location.search,
         page_title: document.title,
