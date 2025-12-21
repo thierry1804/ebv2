@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight } from 'lucide-react';
 import { ProductCard } from '../components/product/ProductCard';
@@ -13,11 +13,32 @@ import { SEO } from '../components/seo/SEO';
 export default function Home() {
   const { categories } = useCategories();
   const { products } = useProducts();
-  const newArrivals = products.filter((p) => p.isNew).slice(0, 4);
-  const bestSellers = products
-    .sort((a, b) => b.reviewCount - a.reviewCount)
-    .slice(0, 4);
-  const saleItems = products.filter((p) => p.isOnSale).slice(0, 4);
+  
+  // Calcul des produits avec priorités pour éviter les doublons
+  // Priorité : Soldes > Nouvelle arrivée > Best seller
+  const { saleItems, newArrivals, bestSellers } = useMemo(() => {
+    // 1. Soldes (priorité la plus haute)
+    const sales = products.filter((p) => p.isOnSale).slice(0, 4);
+    const salesIds = new Set(sales.map((p) => p.id));
+    
+    // 2. Nouvelles arrivées (excluant les produits déjà en solde)
+    const newArr = products
+      .filter((p) => p.isNew && !salesIds.has(p.id))
+      .slice(0, 4);
+    const newArrIds = new Set(newArr.map((p) => p.id));
+    
+    // 3. Best sellers (excluant les produits déjà en solde ou nouvelles arrivées)
+    const bestSell = products
+      .filter((p) => !salesIds.has(p.id) && !newArrIds.has(p.id))
+      .sort((a, b) => b.reviewCount - a.reviewCount)
+      .slice(0, 4);
+    
+    return {
+      saleItems: sales,
+      newArrivals: newArr,
+      bestSellers: bestSell,
+    };
+  }, [products]);
 
   // États pour les configurations
   const [heroConfig, setHeroConfig] = useState<HeroSliderConfig | null>(null);
@@ -185,12 +206,37 @@ export default function Home() {
         </section>
       )}
 
+      {/* Soldes */}
+      {salesConfig?.isVisible !== false && saleItems.length > 0 && (
+        <section className="container mx-auto px-4">
+          <div className="flex items-center justify-between mb-8">
+            <h2 className="text-3xl font-heading font-bold text-text-dark">
+              {salesConfig?.title || 'Soldes'}
+            </h2>
+            {salesConfig?.seeAllLink && (
+              <Link
+                to={salesConfig.seeAllLink}
+                className="flex items-center gap-2 text-secondary hover:text-primary transition-colors font-medium"
+              >
+                {salesConfig.seeAllText || 'Voir tout'}
+                <ArrowRight size={20} />
+              </Link>
+            )}
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {saleItems.map((product) => (
+              <ProductCard key={product.id} product={product} />
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* Nouvelles Arrivées */}
       {newArrivalsConfig?.isVisible !== false && newArrivals.length > 0 && (
         <section className="container mx-auto px-4">
           <div className="flex items-center justify-between mb-8">
             <h2 className="text-3xl font-heading font-bold text-text-dark">
-              {newArrivalsConfig?.title || 'Nouvelles Arrivées'}
+              {newArrivalsConfig?.title || 'Nouvelles arrivées'}
             </h2>
             {newArrivalsConfig?.seeAllLink && (
               <Link
@@ -215,7 +261,7 @@ export default function Home() {
         <section className="container mx-auto px-4">
           <div className="flex items-center justify-between mb-8">
             <h2 className="text-3xl font-heading font-bold text-text-dark">
-              {bestSellersConfig?.title || 'Best Sellers'}
+              {bestSellersConfig?.title || 'Best sellers'}
             </h2>
             {bestSellersConfig?.seeAllLink && (
               <Link
@@ -233,31 +279,6 @@ export default function Home() {
           ))}
         </div>
       </section>
-      )}
-
-      {/* Soldes */}
-      {salesConfig?.isVisible !== false && saleItems.length > 0 && (
-        <section className="container mx-auto px-4">
-          <div className="flex items-center justify-between mb-8">
-            <h2 className="text-3xl font-heading font-bold text-text-dark">
-              {salesConfig?.title || 'Soldes'}
-            </h2>
-            {salesConfig?.seeAllLink && (
-              <Link
-                to={salesConfig.seeAllLink}
-                className="flex items-center gap-2 text-secondary hover:text-primary transition-colors font-medium"
-              >
-                {salesConfig.seeAllText || 'Voir tout'}
-                <ArrowRight size={20} />
-              </Link>
-            )}
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {saleItems.map((product) => (
-              <ProductCard key={product.id} product={product} />
-            ))}
-          </div>
-        </section>
       )}
 
       {/* Feed Instagram */}
