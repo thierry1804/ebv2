@@ -67,24 +67,57 @@ export default function AdminProducts() {
         setProducts([]);
       } else {
         // Adapter les données de Supabase au format Product
-        const adaptedProducts = (data || []).map((p: any) => ({
-          id: p.id,
-          name: p.name,
-          category: p.category,
-          price: p.price,
-          images: Array.isArray(p.images) ? p.images : [p.image || ''],
-          sizes: Array.isArray(p.sizes) ? p.sizes : [],
-          colors: Array.isArray(p.colors) ? p.colors : [],
-          description: p.description || '',
-          composition: p.composition || '',
-          stock: p.stock || 0,
-          rating: p.rating || 0,
-          reviewCount: p.review_count || 0,
-          isNew: p.is_new || false,
-          isOnSale: p.is_on_sale || false,
-          salePrice: p.sale_price,
-          brand: p.brand,
-        }));
+        const adaptedProducts = (data || []).map((p: any) => {
+          // Gérer les couleurs : peut être string[] (ancien format) ou ColorWithHex[] (nouveau format)
+          let colors = [];
+          if (p.colors) {
+            // Si c'est une chaîne JSON, la parser
+            let parsedColors = p.colors;
+            if (typeof p.colors === 'string') {
+              try {
+                parsedColors = JSON.parse(p.colors);
+              } catch (e) {
+                // Si ce n'est pas du JSON valide, traiter comme une liste séparée par des virgules
+                parsedColors = p.colors.split(',').map((c: string) => c.trim()).filter(Boolean);
+              }
+            }
+            
+            if (Array.isArray(parsedColors) && parsedColors.length > 0) {
+              // Si le premier élément est un objet avec name et hex, c'est le nouveau format
+              const firstColor = parsedColors[0];
+              if (firstColor && typeof firstColor === 'object' && firstColor !== null && 
+                  'name' in firstColor && 'hex' in firstColor) {
+                // Nouveau format : ColorWithHex[]
+                colors = parsedColors.map((c: any) => ({
+                  name: c.name || 'Couleur inconnue',
+                  hex: (c.hex && /^#[0-9A-F]{6}$/i.test(c.hex)) ? c.hex.toUpperCase() : '#CCCCCC'
+                }));
+              } else if (typeof firstColor === 'string') {
+                // Ancien format : tableau de strings, on le garde tel quel pour compatibilité
+                colors = parsedColors;
+              }
+            }
+          }
+          
+          return {
+            id: p.id,
+            name: p.name,
+            category: p.category,
+            price: p.price,
+            images: Array.isArray(p.images) ? p.images : [p.image || ''],
+            sizes: Array.isArray(p.sizes) ? p.sizes : [],
+            colors: colors,
+            description: p.description || '',
+            composition: p.composition || '',
+            stock: p.stock || 0,
+            rating: p.rating || 0,
+            reviewCount: p.review_count || 0,
+            isNew: p.is_new || false,
+            isOnSale: p.is_on_sale || false,
+            salePrice: p.sale_price,
+            brand: p.brand,
+          };
+        });
         setProducts(adaptedProducts);
       }
     } catch (error: any) {
@@ -122,6 +155,58 @@ export default function AdminProducts() {
   const handleEdit = (product: Product) => {
     setEditingProduct(product);
     const colors = Array.isArray(product.colors) ? product.colors : [];
+    
+    // Normaliser les couleurs : supporte à la fois string[] (ancien format) et ColorWithHex[]
+    const normalizedColors = colors.map((color: any) => {
+      // Si c'est une chaîne, vérifier si c'est du JSON
+      if (typeof color === 'string') {
+        // Essayer de parser si c'est du JSON
+        try {
+          const parsed = JSON.parse(color);
+          if (parsed && typeof parsed === 'object' && parsed.name && parsed.hex) {
+            // C'est un objet JSON stringifié
+            const predefined = predefinedColors.find(c => c.name === parsed.name);
+            return {
+              name: parsed.name,
+              hex: (parsed.hex && /^#[0-9A-F]{6}$/i.test(parsed.hex)) 
+                ? parsed.hex.toUpperCase() 
+                : (predefined ? predefined.hex : '#CCCCCC'),
+              custom: !predefined
+            };
+          }
+        } catch (e) {
+          // Ce n'est pas du JSON, c'est juste un nom de couleur
+        }
+        // Ancien format : juste le nom
+        const predefined = predefinedColors.find(c => c.name === color);
+        return predefined 
+          ? { name: predefined.name, hex: predefined.hex, custom: false }
+          : { name: color, hex: '#CCCCCC', custom: true };
+      } else if (color && typeof color === 'object' && color.name) {
+        // Nouveau format : { name, hex }
+        const predefined = predefinedColors.find(c => c.name === color.name);
+        // Valider et utiliser le hex si présent et valide, sinon utiliser celui de predefined ou gris
+        let hexValue = '#CCCCCC';
+        if (color.hex && /^#[0-9A-F]{6}$/i.test(color.hex)) {
+          hexValue = color.hex.toUpperCase();
+        } else if (predefined) {
+          hexValue = predefined.hex;
+        }
+        return {
+          name: color.name,
+          hex: hexValue,
+          custom: !predefined
+        };
+      } else {
+        // Format inattendu
+        return { name: 'Couleur inconnue', hex: '#CCCCCC', custom: true };
+      }
+    });
+    
+    // Debug
+    console.log('handleEdit - Couleurs brutes:', colors);
+    console.log('handleEdit - Couleurs normalisées:', normalizedColors);
+    
     setFormData({
       name: product.name,
       category: product.category,
@@ -130,24 +215,14 @@ export default function AdminProducts() {
       composition: product.composition,
       stock: product.stock.toString(),
       sizes: product.sizes.join(', '),
-      colors: colors.join(', '),
+      colors: normalizedColors.map(c => c.name).join(', '),
       images: product.images || [],
       isNew: product.isNew || false,
       isOnSale: product.isOnSale || false,
       salePrice: product.salePrice?.toString() || '',
       brand: product.brand || '',
     });
-    // Convertir les couleurs string en objets
-    const colorObjects = colors.map((colorName: string) => {
-      const predefined = predefinedColors.find(c => c.name === colorName);
-      if (predefined) {
-        return { name: predefined.name, hex: predefined.hex, custom: false };
-      }
-      // Si c'est une couleur personnalisée stockée, on ne peut pas récupérer le hex
-      // On utilise un gris par défaut
-      return { name: colorName, hex: '#CCCCCC', custom: true };
-    });
-    setSelectedColors(colorObjects);
+    setSelectedColors(normalizedColors);
     setSelectedColorHex('#1abc9c');
     setCustomColorHexInput('#1abc9c');
     setCustomColorName('');
@@ -349,9 +424,17 @@ export default function AdminProducts() {
   const handleSave = async () => {
     try {
       const sizesArray = formData.sizes.split(',').map((s) => s.trim()).filter(Boolean);
+      // Stocker les couleurs avec leur code hexadécimal
       const colorsArray = selectedColors.length > 0 
-        ? selectedColors.map(c => c.name)
-        : formData.colors.split(',').map((c) => c.trim()).filter(Boolean);
+        ? selectedColors.map(c => ({ name: c.name, hex: c.hex }))
+        : formData.colors.split(',').map((c) => {
+            const colorName = c.trim();
+            const predefined = predefinedColors.find(pc => pc.name === colorName);
+            return {
+              name: colorName,
+              hex: predefined ? predefined.hex : '#CCCCCC'
+            };
+          }).filter(c => c.name);
       const imagesArray = formData.images;
 
       const productData = {
@@ -362,7 +445,7 @@ export default function AdminProducts() {
         composition: formData.composition,
         stock: parseInt(formData.stock),
         sizes: sizesArray,
-        colors: colorsArray,
+        colors: colorsArray, // Maintenant stocké avec hex
         images: imagesArray,
         is_new: formData.isNew,
         is_on_sale: formData.isOnSale,
@@ -657,58 +740,72 @@ export default function AdminProducts() {
               {/* Palette de couleurs */}
               <div className="mb-4">
                 <div className="flex flex-wrap gap-1.5 items-center">
-                  {/* Couleurs sélectionnées */}
-                  {predefinedColors
-                    .filter(color => selectedColors.some(c => c.name === color.name && !c.custom))
-                    .map((color) => {
-                      return (
-                        <button
-                          key={color.name}
-                          type="button"
-                          onClick={() => toggleColor(color)}
-                          className="relative w-8 h-8 rounded-full transition-all duration-300"
-                          style={{ backgroundColor: color.hex }}
-                          title={color.name}
-                        >
-                          <Check 
-                            size={12} 
-                            className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.3)]" 
-                          />
-                        </button>
-                      );
-                    })}
-                  
-                  {/* Couleurs personnalisées sélectionnées */}
-                  {selectedColors
-                    .filter(c => c.custom)
-                    .map((color, index) => {
+                  {/* Couleurs sélectionnées - Afficher toutes les couleurs sélectionnées avec leur hex */}
+                  {selectedColors.length > 0 ? (
+                    selectedColors.map((selectedColor, index) => {
+                      // Debug
+                      if (index === 0) {
+                        console.log('selectedColors:', selectedColors);
+                        console.log('Première couleur:', selectedColor);
+                      }
+                      // Trouver la couleur prédéfinie correspondante si elle existe
+                      const predefinedColor = predefinedColors.find(c => c.name === selectedColor.name);
+                      // Utiliser le hex de selectedColor en priorité, sinon celui de predefinedColor, sinon gris par défaut
+                      const displayHex = (selectedColor.hex && /^#[0-9A-F]{6}$/i.test(selectedColor.hex))
+                        ? selectedColor.hex 
+                        : (predefinedColor?.hex || '#CCCCCC');
+                      // Calculer si la couleur est sombre pour le contraste du checkmark
+                      const hexValue = displayHex.replace('#', '');
+                      const r = parseInt(hexValue.substr(0, 2), 16);
+                      const g = parseInt(hexValue.substr(2, 2), 16);
+                      const b = parseInt(hexValue.substr(4, 2), 16);
+                      const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+                      const isDark = brightness < 128;
+                      
                       return (
                         <div
-                          key={`custom-${index}`}
+                          key={`${selectedColor.name}-${selectedColor.hex || 'no-hex'}`}
                           className="relative group"
                         >
                           <button
                             type="button"
-                            className="relative w-8 h-8 rounded-full transition-all duration-300"
-                            style={{ backgroundColor: color.hex }}
-                            title={color.name}
+                            onClick={() => {
+                              if (predefinedColor) {
+                                toggleColor(predefinedColor);
+                              } else {
+                                removeColor(selectedColor);
+                              }
+                            }}
+                            className="relative w-8 h-8 rounded-full transition-all duration-300 border-2 border-gray-200 hover:border-gray-400"
+                            style={{ 
+                              backgroundColor: displayHex,
+                              background: displayHex
+                            }}
+                            title={`${selectedColor.name} (${displayHex})`}
                           >
                             <Check 
                               size={12} 
-                              className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.3)]" 
+                              className={`absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 drop-shadow-[0_1px_2px_rgba(0,0,0,0.3)] ${
+                                isDark ? 'text-white' : 'text-gray-800'
+                              }`}
                             />
                           </button>
-                          <button
-                            type="button"
-                            onClick={() => removeColor(color)}
-                            className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-[9px] font-bold hover:bg-red-600 z-10"
-                            title="Supprimer cette couleur"
-                          >
-                            ×
-                          </button>
+                          {selectedColor.custom && (
+                            <button
+                              type="button"
+                              onClick={() => removeColor(selectedColor)}
+                              className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-[9px] font-bold hover:bg-red-600 z-10"
+                              title="Supprimer cette couleur"
+                            >
+                              ×
+                            </button>
+                          )}
                         </div>
                       );
-                    })}
+                    })
+                  ) : (
+                    <span className="text-sm text-gray-500 italic">Aucune couleur sélectionnée</span>
+                  )}
                   
                   {/* Bouton pour ouvrir la modal */}
                   <button

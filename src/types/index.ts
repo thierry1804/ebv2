@@ -1,3 +1,9 @@
+// Type pour une couleur avec son code hexadécimal
+export interface ColorWithHex {
+  name: string;
+  hex: string;
+}
+
 export interface Product {
   id: string;
   name: string;
@@ -5,7 +11,8 @@ export interface Product {
   price: number; // en Ariary
   images: string[]; // URLs Unsplash
   sizes: string[];
-  colors: string[];
+  // Supporte à la fois les anciens produits (string[]) et les nouveaux (ColorWithHex[])
+  colors: string[] | ColorWithHex[];
   description: string;
   composition: string;
   stock: number;

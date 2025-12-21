@@ -72,9 +72,15 @@ export default function Shop() {
 
     // Couleurs
     if (selectedColors.length > 0) {
-      filtered = filtered.filter((p) =>
-        selectedColors.some((color) => p.colors.includes(color))
-      );
+      filtered = filtered.filter((p) => {
+        // Gérer les deux formats : string[] ou ColorWithHex[]
+        const productColorNames = Array.isArray(p.colors) && p.colors.length > 0
+          ? (typeof p.colors[0] === 'string' 
+              ? p.colors as string[]
+              : (p.colors as Array<{name: string, hex: string}>).map(c => c.name))
+          : [];
+        return selectedColors.some((color) => productColorNames.includes(color));
+      });
     }
 
     // Tri
@@ -111,7 +117,15 @@ export default function Shop() {
   ]);
 
   const allSizes = Array.from(new Set(products.flatMap((p) => p.sizes))).sort();
-  const allColors = Array.from(new Set(products.flatMap((p) => p.colors))).sort();
+  // Extraire les noms de couleurs (gérer les deux formats : string[] ou ColorWithHex[])
+  const allColors = Array.from(new Set(
+    products.flatMap((p) => {
+      if (!Array.isArray(p.colors) || p.colors.length === 0) return [];
+      return typeof p.colors[0] === 'string'
+        ? p.colors as string[]
+        : (p.colors as Array<{name: string, hex: string}>).map(c => c.name);
+    })
+  )).sort();
 
   const toggleSize = (size: string) => {
     setSelectedSizes((prev) =>
