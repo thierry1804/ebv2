@@ -7,6 +7,8 @@ import { ColorSelector } from '../components/product/ColorSelector';
 import { QuantitySelector } from '../components/product/QuantitySelector';
 import { Button } from '../components/ui/Button';
 import { ProductCard } from '../components/product/ProductCard';
+import { ReviewForm } from '../components/product/ReviewForm';
+import { ReviewList } from '../components/product/ReviewList';
 import { useCart } from '../context/CartContext';
 import { useWishlist } from '../context/WishlistContext';
 import { formatPrice } from '../utils/formatters';
@@ -20,16 +22,17 @@ export default function ProductDetail() {
   const navigate = useNavigate();
   const { addItem } = useCart();
   const { isInWishlist, toggleWishlist } = useWishlist();
-  const { products } = useProducts();
+  const { products, reload: reloadProducts } = useProducts();
 
   const product = products.find((p) => p.id === id);
 
   const [selectedSize, setSelectedSize] = useState<string | null>(null);
   const [selectedColor, setSelectedColor] = useState<string | null>(null);
   const [quantity, setQuantity] = useState(1);
-  const [activeTab, setActiveTab] = useState<'description' | 'composition' | 'sizes' | 'shipping'>(
+  const [activeTab, setActiveTab] = useState<'description' | 'composition' | 'sizes' | 'shipping' | 'reviews'>(
     'description'
   );
+  const [reviewsKey, setReviewsKey] = useState(0); // Pour forcer le rechargement de ReviewList
 
   // Suivre la vue du produit avec Google Analytics
   // IMPORTANT: Ce hook doit être appelé AVANT tout return conditionnel
@@ -266,6 +269,7 @@ export default function ProductDetail() {
                 { id: 'composition', label: 'Composition & Entretien' },
                 { id: 'sizes', label: 'Guide tailles' },
                 { id: 'shipping', label: 'Livraison & Retours' },
+                { id: 'reviews', label: 'Avis' },
               ].map((tab) => (
                 <button
                   key={tab.id}
@@ -343,6 +347,20 @@ export default function ProductDetail() {
                     <li>Articles non portés, avec étiquettes</li>
                     <li>Remboursement ou échange possible</li>
                   </ul>
+                </div>
+              )}
+              {activeTab === 'reviews' && (
+                <div className="space-y-8">
+                  <ReviewForm
+                    productId={product.id}
+                    onReviewSubmitted={async () => {
+                      // Rafraîchir les produits pour mettre à jour les notes
+                      await reloadProducts();
+                      // Forcer le rechargement de la liste des avis
+                      setReviewsKey((prev) => prev + 1);
+                    }}
+                  />
+                  <ReviewList productId={product.id} refreshKey={reviewsKey} />
                 </div>
               )}
             </div>
