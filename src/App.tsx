@@ -7,6 +7,7 @@ import { AdminAuthProvider } from './context/AdminAuthContext';
 import { Layout } from './components/layout/Layout';
 import { AdminLayout } from './components/admin/AdminLayout';
 import { ProtectedRoute } from './components/admin/ProtectedRoute';
+import { GoogleAnalytics } from './components/analytics/GoogleAnalytics';
 
 // Lazy load des pages publiques
 const Home = lazy(() => import('./pages/Home'));
@@ -47,6 +48,7 @@ const LoadingFallback = () => (
 function App() {
   return (
     <BrowserRouter>
+      <GoogleAnalytics />
       <AuthProvider>
         <AdminAuthProvider>
           <CartProvider>

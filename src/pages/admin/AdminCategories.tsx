@@ -496,14 +496,14 @@ export default function AdminCategories() {
         position="right"
         width="lg"
         footer={
-          <div className="flex justify-end gap-3">
+          <div className="flex flex-col sm:flex-row justify-end gap-3">
             <Button
               onClick={() => setIsOffcanvasOpen(false)}
-              className="bg-gray-200 hover:bg-gray-300 text-gray-800"
+              className="bg-gray-200 hover:bg-gray-300 text-gray-800 w-full sm:w-auto"
             >
               Annuler
             </Button>
-            <Button onClick={handleSave} className="bg-secondary hover:bg-secondary/90">
+            <Button onClick={handleSave} className="bg-secondary hover:bg-secondary/90 w-full sm:w-auto">
               <Save size={18} className="mr-2" />
               {editingCategory ? 'Modifier' : 'Créer'}
             </Button>

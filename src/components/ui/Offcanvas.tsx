@@ -33,10 +33,10 @@ export function Offcanvas({
   }, [isOpen]);
 
   const widths = {
-    sm: 'w-80',
-    md: 'w-96',
-    lg: 'w-[600px]',
-    xl: 'w-[1200px]',
+    sm: 'w-full md:w-80',
+    md: 'w-full md:w-96',
+    lg: 'w-full md:w-[600px]',
+    xl: 'w-full md:w-[800px] lg:w-[1200px]',
   };
 
   const positions = {
@@ -65,11 +65,11 @@ export function Offcanvas({
       >
         {/* Header */}
         {title && (
-          <div className="flex-shrink-0 flex items-center justify-between p-6 border-b border-gray-200 bg-white">
-            <h2 className="text-xl font-heading font-semibold text-text-dark">{title}</h2>
+          <div className="flex-shrink-0 flex items-center justify-between p-4 md:p-6 border-b border-gray-200 bg-white">
+            <h2 className="text-lg md:text-xl font-heading font-semibold text-text-dark pr-2">{title}</h2>
             <button
               onClick={onClose}
-              className="text-text-dark hover:text-secondary transition-colors"
+              className="text-text-dark hover:text-secondary transition-colors flex-shrink-0"
             >
               <X size={24} />
             </button>
@@ -77,11 +77,11 @@ export function Offcanvas({
         )}
         
         {/* Content - scrollable */}
-        <div className="flex-1 overflow-y-auto p-6">{children}</div>
+        <div className="flex-1 overflow-y-auto p-4 md:p-6">{children}</div>
         
         {/* Footer - fixed at bottom */}
         {footer && (
-          <div className="flex-shrink-0 border-t border-gray-200 bg-white p-6">
+          <div className="flex-shrink-0 border-t border-gray-200 bg-white p-4 md:p-6">
             {footer}
           </div>
         )}

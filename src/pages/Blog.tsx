@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { Calendar, User, Loader2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { DatabaseBlogPost } from '../types';
+import { SEO } from '../components/seo/SEO';
 
 interface BlogPostDisplay {
   id: string;
@@ -87,8 +88,22 @@ export default function Blog() {
   }
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <h1 className="text-3xl font-heading font-bold text-text-dark mb-8">Blog</h1>
+    <>
+      <SEO
+        title="Blog"
+        description="Découvrez nos articles sur la mode féminine, les tendances, les conseils style et bien plus encore. Actualités et inspirations ByValsue."
+        keywords="blog mode, tendances mode, conseils style, mode féminine, actualités mode, ByValsue"
+        url="/blog"
+        structuredData={{
+          '@context': 'https://schema.org',
+          '@type': 'Blog',
+          name: 'Blog ByValsue',
+          description: 'Blog sur la mode féminine, les tendances et les conseils style',
+          url: 'https://eshopbyvalsue.mg/blog',
+        }}
+      />
+      <div className="container mx-auto px-4 py-8">
+        <h1 className="text-3xl font-heading font-bold text-text-dark mb-8">Blog</h1>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Articles */}
@@ -171,6 +186,7 @@ export default function Blog() {
         </aside>
       </div>
     </div>
+    </>
   );
 }
 

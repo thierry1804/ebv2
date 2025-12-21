@@ -1,6 +1,22 @@
+import { SEO } from '../components/seo/SEO';
+
 export default function About() {
   return (
-    <div className="container mx-auto px-4 py-16">
+    <>
+      <SEO
+        title="À propos"
+        description="Découvrez l'histoire de ByValsue, notre mission, nos valeurs et notre équipe. Une boutique en ligne de mode féminine haut de gamme à Madagascar."
+        keywords="à propos, ByValsue, histoire, valeurs, équipe, mode féminine, Madagascar"
+        url="/a-propos"
+        structuredData={{
+          '@context': 'https://schema.org',
+          '@type': 'AboutPage',
+          name: 'À propos de ByValsue',
+          description: 'Découvrez l\'histoire et les valeurs de ByValsue',
+          url: 'https://eshopbyvalsue.mg/a-propos',
+        }}
+      />
+      <div className="container mx-auto px-4 py-16">
       <div className="max-w-4xl mx-auto">
         <h1 className="text-4xl font-heading font-bold text-text-dark mb-8 text-center">
           À propos de ByValsue
@@ -58,6 +74,7 @@ export default function About() {
         </div>
       </div>
     </div>
+    </>
   );
 }
 

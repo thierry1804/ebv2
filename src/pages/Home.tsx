@@ -8,6 +8,7 @@ import { HeroSliderConfig, SectionConfig, InstagramConfig, NewsletterConfig, Fea
 import { useCategories } from '../hooks/useCategories';
 import { useProducts } from '../hooks/useProducts';
 import { HeroSlider } from '../components/hero/HeroSlider';
+import { SEO } from '../components/seo/SEO';
 
 export default function Home() {
   const { categories } = useCategories();
@@ -123,7 +124,26 @@ export default function Home() {
   const heroSlides = heroConfig?.slides?.filter((s) => s.isActive) || defaultHeroSlides.filter((s) => s.isActive);
 
   return (
-    <div className="space-y-16 pb-16">
+    <>
+      <SEO
+        title="Accueil"
+        description="Découvrez ByValsue, votre boutique en ligne de mode féminine haut de gamme à Madagascar. Collections exclusives de vêtements, accessoires, chaussures et bijoux."
+        keywords="mode féminine, boutique en ligne, Madagascar, vêtements, accessoires, mode haut de gamme, ByValsue, nouvelles collections"
+        url="/"
+        structuredData={{
+          '@context': 'https://schema.org',
+          '@type': 'WebSite',
+          name: 'Eshop ByValsue',
+          url: 'https://eshopbyvalsue.mg',
+          description: 'Boutique en ligne malgache de mode féminine haut de gamme',
+          potentialAction: {
+            '@type': 'SearchAction',
+            target: 'https://eshopbyvalsue.mg/boutique?search={search_term_string}',
+            'query-input': 'required name=search_term_string',
+          },
+        }}
+      />
+      <div className="space-y-16 pb-16">
       {/* Hero Slider */}
       {heroSlides.length > 0 && (
         <div className="-mt-20 md:-mt-24">
@@ -302,6 +322,7 @@ export default function Home() {
         </section>
       )}
     </div>
+    </>
   );
 }
 

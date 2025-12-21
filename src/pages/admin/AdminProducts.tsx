@@ -547,21 +547,21 @@ export default function AdminProducts() {
         position="right"
         width="xl"
         footer={
-          <div className="flex justify-end gap-3">
+          <div className="flex flex-col sm:flex-row justify-end gap-3">
             <Button
               onClick={() => setIsOffcanvasOpen(false)}
-              className="bg-gray-200 hover:bg-gray-300 text-gray-800"
+              className="bg-gray-200 hover:bg-gray-300 text-gray-800 w-full sm:w-auto"
             >
               Annuler
             </Button>
-            <Button onClick={handleSave} className="bg-secondary hover:bg-secondary/90">
+            <Button onClick={handleSave} className="bg-secondary hover:bg-secondary/90 w-full sm:w-auto">
               {editingProduct ? 'Modifier' : 'Créer'}
             </Button>
           </div>
         }
       >
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Nom *</label>
               <input
@@ -589,7 +589,7 @@ export default function AdminProducts() {
               </select>
             </div>
           </div>
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Prix (MGA)</label>
               <input
@@ -636,7 +636,7 @@ export default function AdminProducts() {
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-secondary"
             />
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Tailles (séparées par des virgules)
@@ -847,7 +847,7 @@ export default function AdminProducts() {
             {/* URLs manuelles */}
             <div className="mb-2">
               <label className="block text-xs text-gray-600 mb-1">Ou ajouter une URL</label>
-              <div className="flex gap-2">
+              <div className="flex flex-col sm:flex-row gap-2">
                 <input
                   type="text"
                   placeholder="https://images.unsplash.com/..."
@@ -870,7 +870,7 @@ export default function AdminProducts() {
                       input.value = '';
                     }
                   }}
-                  className="bg-gray-200 hover:bg-gray-300 text-gray-800"
+                  className="bg-gray-200 hover:bg-gray-300 text-gray-800 w-full sm:w-auto"
                 >
                   Ajouter
                 </Button>
@@ -905,7 +905,7 @@ export default function AdminProducts() {
               </div>
             )}
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="flex items-center">
               <input
                 type="checkbox"

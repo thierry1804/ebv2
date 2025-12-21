@@ -1,0 +1,25 @@
+User-agent: *
+Allow: /
+
+# Sitemap
+Sitemap: https://eshopbyvalsue.mg/sitemap.xml
+
+# Exclure les pages admin et les pages privées
+Disallow: /admin/
+Disallow: /compte/
+Disallow: /panier/
+Disallow: /checkout/
+Disallow: /connexion/
+Disallow: /wishlist/
+
+# Autoriser les assets statiques
+Allow: /assets/
+Allow: /*.css
+Allow: /*.js
+Allow: /*.jpg
+Allow: /*.jpeg
+Allow: /*.png
+Allow: /*.gif
+Allow: /*.svg
+Allow: /*.webp
+

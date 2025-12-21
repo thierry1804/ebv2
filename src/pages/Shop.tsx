@@ -5,6 +5,7 @@ import { Button } from '../components/ui/Button';
 import { formatPrice } from '../utils/formatters';
 import { useCategories } from '../hooks/useCategories';
 import { useProducts } from '../hooks/useProducts';
+import { SEO } from '../components/seo/SEO';
 
 export default function Shop() {
   const { categories } = useCategories();
@@ -247,9 +248,39 @@ export default function Shop() {
     </div>
   );
 
+  const pageTitle = searchQuery
+    ? `Résultats pour "${searchQuery}"`
+    : filterNew
+    ? 'Nouveautés'
+    : filterSale
+    ? 'Soldes'
+    : 'Boutique';
+
+  const pageDescription = searchQuery
+    ? `Découvrez nos produits correspondant à "${searchQuery}"`
+    : filterNew
+    ? 'Découvrez nos dernières nouveautés de mode féminine'
+    : filterSale
+    ? 'Profitez de nos soldes et promotions sur une sélection d\'articles'
+    : 'Parcourez notre collection complète de mode féminine haut de gamme. Vêtements, accessoires, chaussures et bijoux.';
+
   return (
-    <div className="container mx-auto px-4 py-8">
-      {/* Breadcrumbs */}
+    <>
+      <SEO
+        title={pageTitle}
+        description={pageDescription}
+        keywords="boutique, produits, mode féminine, vêtements, accessoires, chaussures, bijoux, Madagascar"
+        url="/boutique"
+        structuredData={{
+          '@context': 'https://schema.org',
+          '@type': 'CollectionPage',
+          name: pageTitle,
+          description: pageDescription,
+          url: 'https://eshopbyvalsue.mg/boutique',
+        }}
+      />
+      <div className="container mx-auto px-4 py-8">
+        {/* Breadcrumbs */}
       <div className="mb-6 text-sm text-text-dark/80">
         <span>Accueil</span>
         <span className="mx-2">/</span>
@@ -342,6 +373,7 @@ export default function Shop() {
         </div>
       )}
     </div>
+    </>
   );
 }
 

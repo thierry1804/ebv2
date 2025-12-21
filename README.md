@@ -21,12 +21,18 @@ Le site utilise une palette de couleurs élégante et féminine :
 - **Framer Motion** pour les animations
 - **React Hot Toast** pour les notifications
 - **Lucide React** pour les icônes
+- **React Helmet Async** pour le SEO
+- **Google Analytics (GA4)** pour le suivi des visiteurs
 
 ## 📦 Installation
 
 ```bash
 # Installer les dépendances
 npm install
+
+# Configurer les variables d'environnement
+cp .env.example .env
+# Éditez .env et ajoutez vos clés API
 
 # Lancer le serveur de développement
 npm run dev
@@ -37,6 +43,30 @@ npm run build
 # Prévisualiser le build
 npm run preview
 ```
+
+### Configuration des variables d'environnement
+
+Créez un fichier `.env` à la racine du projet avec les variables suivantes :
+
+```env
+# Supabase (requis)
+VITE_SUPABASE_URL=votre_url_supabase
+VITE_SUPABASE_ANON_KEY=votre_cle_anon
+
+# EmailJS (optionnel)
+VITE_EMAILJS_SERVICE_ID=votre_service_id
+VITE_EMAILJS_TEMPLATE_ID=votre_template_id
+VITE_EMAILJS_PUBLIC_KEY=votre_cle_publique
+
+# Google Analytics (optionnel mais recommandé)
+VITE_GA_MEASUREMENT_ID=G-XXXXXXXXXX
+```
+
+**Pour obtenir votre ID Google Analytics :**
+1. Allez sur [Google Analytics](https://analytics.google.com)
+2. Créez une propriété GA4
+3. Copiez l'ID de mesure (format: `G-XXXXXXXXXX`)
+4. Ajoutez-le dans votre fichier `.env`
 
 ## 🚀 Fonctionnalités
 
@@ -59,6 +89,8 @@ npm run preview
 - ✅ Animations subtiles avec Framer Motion
 - ✅ Notifications toast
 - ✅ Formatage de la devise Ariary (MGA)
+- ✅ **SEO optimisé** : Meta tags dynamiques, Open Graph, Twitter Cards, données structurées JSON-LD
+- ✅ **Google Analytics (GA4)** : Suivi des pages, événements e-commerce (vues produits, ajouts au panier, achats)
 
 ## 📁 Structure du projet
 
@@ -67,12 +99,18 @@ src/
 ├── components/       # Composants réutilisables
 │   ├── layout/      # Header, Footer, Layout
 │   ├── product/     # ProductCard, ProductGallery, etc.
+│   ├── seo/         # Composant SEO réutilisable
+│   ├── analytics/    # Google Analytics wrapper
 │   └── ui/          # Button, Modal, Badge, etc.
 ├── pages/           # Pages principales
 ├── context/         # Context API (Cart, Wishlist, Auth)
+├── hooks/           # Hooks personnalisés (useGoogleAnalytics, etc.)
 ├── types/           # Interfaces TypeScript
 ├── data/            # Données produits simulées
 └── utils/           # Helpers et formatters
+public/
+├── robots.txt       # Configuration pour les robots des moteurs de recherche
+└── sitemap.xml      # Plan du site pour le référencement
 ```
 
 ## 🎯 Prochaines étapes

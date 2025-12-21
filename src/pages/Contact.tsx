@@ -3,6 +3,7 @@ import { Button } from '../components/ui/Button';
 import { Mail, Phone, MapPin, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import emailjs from '@emailjs/browser';
+import { SEO } from '../components/seo/SEO';
 
 export default function Contact() {
   const [formData, setFormData] = useState({
@@ -118,7 +119,21 @@ export default function Contact() {
   const mapEmbedUrl = 'https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d11663.085015077057!2d47.474133251727245!3d-18.83184333245488!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x21f08176a89c0c7b%3A0x2b03d7f2381b5137!2sAmbohijanahary%2C%20Tananarive!5e1!3m2!1sfr!2smg!4v1766295190681!5m2!1sfr!2smg';
 
   return (
-    <div className="relative min-h-screen">
+    <>
+      <SEO
+        title="Contact"
+        description="Contactez ByValsue pour toute question, suggestion ou demande d'information. Notre équipe est à votre écoute pour vous offrir le meilleur service."
+        keywords="contact, ByValsue, service client, support, assistance, Madagascar"
+        url="/contact"
+        structuredData={{
+          '@context': 'https://schema.org',
+          '@type': 'ContactPage',
+          name: 'Contact ByValsue',
+          description: 'Contactez notre équipe pour toute question ou demande',
+          url: 'https://eshopbyvalsue.mg/contact',
+        }}
+      />
+      <div className="relative min-h-screen">
       {/* Carte Google Maps en arrière-plan */}
       <div className="absolute inset-0 z-0 opacity-60">
         <iframe
@@ -301,5 +316,6 @@ export default function Contact() {
         </div>
       </div>
     </div>
+    </>
   );
 }

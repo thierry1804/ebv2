@@ -4,6 +4,7 @@ import { Calendar, User, ArrowLeft, Loader2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { DatabaseBlogPost } from '../types';
 import { markdownToHtml } from '../utils/markdown';
+import { SEO } from '../components/seo/SEO';
 
 export default function BlogDetail() {
   const { id } = useParams<{ id: string }>();
@@ -85,9 +86,43 @@ export default function BlogDetail() {
     );
   }
 
+  const articleImage = post.image || '';
+  const articleDescription = post.excerpt || post.title;
+  const publishedDate = post.published_at || post.created_at;
+
   return (
-    <div className="container mx-auto px-4 py-8">
-      {/* Breadcrumbs */}
+    <>
+      <SEO
+        title={post.title}
+        description={articleDescription}
+        keywords={post.tags?.join(', ') || post.category || 'mode féminine, blog'}
+        image={articleImage}
+        url={`/blog/${post.id}`}
+        type="article"
+        structuredData={{
+          '@context': 'https://schema.org',
+          '@type': 'BlogPosting',
+          headline: post.title,
+          description: articleDescription,
+          image: articleImage,
+          datePublished: publishedDate,
+          dateModified: post.updated_at || publishedDate,
+          author: {
+            '@type': 'Person',
+            name: post.author || 'ByValsue Team',
+          },
+          publisher: {
+            '@type': 'Organization',
+            name: 'ByValsue',
+            logo: {
+              '@type': 'ImageObject',
+              url: 'https://eshopbyvalsue.mg/logo.png',
+            },
+          },
+        }}
+      />
+      <div className="container mx-auto px-4 py-8">
+        {/* Breadcrumbs */}
       <div className="mb-6 text-sm text-text-dark/80">
         <Link to="/" className="hover:text-secondary transition-colors">
           Accueil
@@ -178,6 +213,7 @@ export default function BlogDetail() {
         )}
       </article>
     </div>
+    </>
   );
 }
 

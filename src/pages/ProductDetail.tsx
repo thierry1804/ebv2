@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { Star, Heart, ShoppingCart, ArrowLeft } from 'lucide-react';
 import { ProductGallery } from '../components/product/ProductGallery';
@@ -12,6 +12,8 @@ import { useWishlist } from '../context/WishlistContext';
 import { formatPrice } from '../utils/formatters';
 import { useProducts } from '../hooks/useProducts';
 import toast from 'react-hot-toast';
+import { SEO } from '../components/seo/SEO';
+import { analytics } from '../hooks/useGoogleAnalytics';
 
 export default function ProductDetail() {
   const { id } = useParams<{ id: string }>();
@@ -49,6 +51,11 @@ export default function ProductDetail() {
     .filter((p) => p.category === product.category && p.id !== product.id)
     .slice(0, 4);
 
+  // Suivre la vue du produit avec Google Analytics
+  useEffect(() => {
+    analytics.viewProduct(product.id, product.name, displayPrice);
+  }, [product.id, product.name, displayPrice]);
+
   const handleAddToCart = () => {
     // Vérifier uniquement les attributs qui existent pour le produit
     const hasSizes = product.sizes && product.sizes.length > 0;
@@ -65,11 +72,48 @@ export default function ProductDetail() {
     }
 
     addItem(product, selectedSize, selectedColor, quantity);
+    analytics.addToCart(product.id, product.name, displayPrice, quantity);
     toast.success('Produit ajouté au panier');
   };
 
+  const productImage = product.images && product.images.length > 0 ? product.images[0] : '';
+  const productDescription = product.description || `${product.name} - Mode féminine haut de gamme disponible sur ByValsue`;
+
   return (
-    <div className="container mx-auto px-4 py-8">
+    <>
+      <SEO
+        title={product.name}
+        description={productDescription}
+        keywords={`${product.name}, ${product.category}, mode féminine, ByValsue, Madagascar`}
+        image={productImage}
+        url={`/produit/${product.id}`}
+        type="product"
+        structuredData={{
+          '@context': 'https://schema.org',
+          '@type': 'Product',
+          name: product.name,
+          description: productDescription,
+          image: product.images || [],
+          brand: {
+            '@type': 'Brand',
+            name: 'ByValsue',
+          },
+          offers: {
+            '@type': 'Offer',
+            url: `https://eshopbyvalsue.mg/produit/${product.id}`,
+            priceCurrency: 'MGA',
+            price: displayPrice.toString(),
+            availability: product.stock > 0 ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock',
+            itemCondition: 'https://schema.org/NewCondition',
+          },
+          aggregateRating: {
+            '@type': 'AggregateRating',
+            ratingValue: product.rating.toString(),
+            reviewCount: product.reviewCount.toString(),
+          },
+        }}
+      />
+      <div className="container mx-auto px-4 py-8">
       {/* Breadcrumbs */}
       <div className="mb-6 text-sm text-text-dark/80">
         <Link to="/" className="hover:text-secondary transition-colors">
@@ -316,6 +360,7 @@ export default function ProductDetail() {
         </section>
       )}
     </div>
+    </>
   );
 }
 
