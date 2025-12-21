@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
-import { LandingPageConfig, HeroSliderConfig, HeaderLogoConfig, PromotionalBannerConfig, SectionConfig, InstagramConfig, NewsletterConfig, FeaturedContentConfig } from '../../types';
+import { LandingPageConfig, HeroSliderConfig, HeaderLogoConfig, PromotionalBannerConfig, SectionConfig, InstagramConfig, NewsletterConfig, FeaturedContentConfig, SocialMediaConfig } from '../../types';
 import { Save, Edit, Eye, EyeOff, Plus, Trash2, Image as ImageIcon, Upload, X } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Modal } from '../../components/ui/Modal';
@@ -820,6 +820,83 @@ export default function AdminLandingPage() {
               value={data.buttonLink || ''}
               onChange={(e) => setFormData({ ...data, buttonLink: e.target.value })}
               placeholder="/boutique"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+            />
+          </div>
+          <div>
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={data.isVisible !== false}
+                onChange={(e) => setFormData({ ...data, isVisible: e.target.checked })}
+                className="rounded"
+              />
+              <span className="text-sm font-medium text-gray-700">Visible</span>
+            </label>
+          </div>
+        </div>
+      );
+    }
+
+    if (key === 'social_media') {
+      const data = formData as SocialMediaConfig;
+      return (
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Nom de la marque</label>
+            <input
+              type="text"
+              value={data.brandName || ''}
+              onChange={(e) => setFormData({ ...data, brandName: e.target.value })}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+            <textarea
+              value={data.description || ''}
+              onChange={(e) => setFormData({ ...data, description: e.target.value })}
+              rows={3}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">URL Facebook (optionnel)</label>
+            <input
+              type="url"
+              value={data.facebookUrl || ''}
+              onChange={(e) => setFormData({ ...data, facebookUrl: e.target.value })}
+              placeholder="https://facebook.com/..."
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">URL Instagram (optionnel)</label>
+            <input
+              type="url"
+              value={data.instagramUrl || ''}
+              onChange={(e) => setFormData({ ...data, instagramUrl: e.target.value })}
+              placeholder="https://instagram.com/..."
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">URL Twitter (optionnel)</label>
+            <input
+              type="url"
+              value={data.twitterUrl || ''}
+              onChange={(e) => setFormData({ ...data, twitterUrl: e.target.value })}
+              placeholder="https://twitter.com/..."
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">URL TikTok (optionnel)</label>
+            <input
+              type="url"
+              value={data.tiktokUrl || ''}
+              onChange={(e) => setFormData({ ...data, tiktokUrl: e.target.value })}
+              placeholder="https://tiktok.com/@..."
               className="w-full px-4 py-2 border border-gray-300 rounded-lg"
             />
           </div>

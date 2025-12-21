@@ -201,3 +201,13 @@ export interface FeaturedContentConfig {
   isVisible: boolean;
 }
 
+export interface SocialMediaConfig {
+  brandName: string;
+  description: string;
+  facebookUrl?: string;
+  instagramUrl?: string;
+  twitterUrl?: string;
+  tiktokUrl?: string;
+  isVisible: boolean;
+}
+
