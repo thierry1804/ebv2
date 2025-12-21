@@ -67,18 +67,34 @@ export function normalizeColors(colors: string[] | ColorWithHex[]): ColorWithHex
     }
   }
   
-  // Si c'est un tableau de strings (ancien format), convertir en ColorWithHex[]
-  return (colors as string[]).map(colorName => {
-    if (typeof colorName === 'string') {
+  // Si c'est un tableau de strings, vérifier si ce sont des chaînes JSON ou des noms simples
+  return (colors as string[]).map(colorItem => {
+    if (typeof colorItem === 'string') {
+      // Essayer de parser si c'est du JSON
+      try {
+        const parsed = JSON.parse(colorItem);
+        if (parsed && typeof parsed === 'object' && parsed.name && parsed.hex) {
+          // C'est un objet JSON stringifié
+          return {
+            name: parsed.name,
+            hex: (parsed.hex && /^#[0-9A-F]{6}$/i.test(parsed.hex)) 
+              ? parsed.hex.toUpperCase() 
+              : getColorHex(parsed.name)
+          };
+        }
+      } catch (e) {
+        // Ce n'est pas du JSON, c'est juste un nom de couleur
+      }
+      // C'est juste un nom de couleur (ancien format)
       return {
-        name: colorName,
-        hex: getColorHex(colorName)
+        name: colorItem,
+        hex: getColorHex(colorItem)
       };
     }
     // Si c'est un objet mais pas au bon format, essayer de récupérer le nom
-    if (colorName && typeof colorName === 'object' && 'name' in colorName) {
-      const name = (colorName as any).name;
-      const hex = (colorName as any).hex;
+    if (colorItem && typeof colorItem === 'object' && 'name' in colorItem) {
+      const name = (colorItem as any).name;
+      const hex = (colorItem as any).hex;
       return {
         name: typeof name === 'string' ? name : 'Couleur inconnue',
         hex: (hex && /^#[0-9A-F]{6}$/i.test(hex)) ? hex.toUpperCase() : getColorHex(name || 'Couleur inconnue')

@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { Product } from '../types';
 import { supabase } from '../lib/supabase';
 import { useCategories } from './useCategories';
+import { getColorHex } from '../config/colors';
 
 export function useProducts() {
   const { categories, isLoading: categoriesLoading } = useCategories();
@@ -55,8 +56,33 @@ export function useProducts() {
                   hex: (c.hex && /^#[0-9A-F]{6}$/i.test(c.hex)) ? c.hex.toUpperCase() : '#CCCCCC'
                 }));
               } else if (typeof firstColor === 'string') {
-                // Ancien format : tableau de strings, on le garde tel quel pour compatibilité
-                colors = parsedColors;
+                // Vérifier si c'est une chaîne JSON
+                try {
+                  const parsed = JSON.parse(firstColor);
+                  if (parsed && typeof parsed === 'object' && parsed.name && parsed.hex) {
+                    // C'est un tableau de chaînes JSON
+                    colors = parsedColors.map((c: string) => {
+                      try {
+                        const parsed = JSON.parse(c);
+                        return {
+                          name: parsed.name || 'Couleur inconnue',
+                          hex: (parsed.hex && /^#[0-9A-F]{6}$/i.test(parsed.hex)) ? parsed.hex.toUpperCase() : '#CCCCCC'
+                        };
+                      } catch (e) {
+                        return {
+                          name: c,
+                          hex: getColorHex(c)
+                        };
+                      }
+                    });
+                  } else {
+                    // Ancien format : tableau de strings simples
+                    colors = parsedColors;
+                  }
+                } catch (e) {
+                  // Ancien format : tableau de strings simples
+                  colors = parsedColors;
+                }
               }
             }
           }
