@@ -1,8 +1,7 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ProductCard } from '../components/product/ProductCard';
 import { Button } from '../components/ui/Button';
-import { formatPrice } from '../utils/formatters';
 import { useCategories } from '../hooks/useCategories';
 import { useProducts } from '../hooks/useProducts';
 import { SEO } from '../components/seo/SEO';
@@ -22,11 +21,6 @@ export default function Shop() {
   const searchQuery = searchParams.get('search') || '';
   const filterNew = searchParams.get('filter') === 'new';
   const filterSale = searchParams.get('filter') === 'sale';
-
-  // Prix min/max (pour un futur slider si besoin)
-  const allPrices = useMemo(() => products.map((p) => p.salePrice || p.price), [products]);
-  const minPrice = allPrices.length > 0 ? Math.min(...allPrices) : 0;
-  const maxPrice = allPrices.length > 0 ? Math.max(...allPrices) : 200000;
 
   // Filtrage des produits
   const filteredProducts = useMemo(() => {
@@ -152,9 +146,9 @@ export default function Shop() {
   };
 
 
-  const FilterSidebar = ({ isVisible = true }: { isVisible?: boolean }) => {
+  const FilterSidebar = () => {
     return (
-    <div className="space-y-6">
+      <div className="space-y-6">
       {/* Catégories */}
       <div>
         <h3 className="font-heading font-semibold text-lg mb-3 text-text-dark">Catégories</h3>
@@ -237,7 +231,7 @@ export default function Shop() {
       <Button variant="outline" onClick={clearFilters} className="w-full">
         Réinitialiser les filtres
       </Button>
-    </div>
+      </div>
     );
   };
 
@@ -283,7 +277,7 @@ export default function Shop() {
       <div className="flex gap-8">
         {/* Sidebar filtres - Desktop */}
         <aside className="hidden lg:block w-64 flex-shrink-0">
-          <FilterSidebar isVisible={true} />
+          <FilterSidebar />
         </aside>
 
         {/* Zone produits */}
@@ -361,7 +355,7 @@ export default function Shop() {
                 ✕
               </button>
             </div>
-            <FilterSidebar isVisible={showFilters} />
+            <FilterSidebar />
           </div>
         </div>
       )}
