@@ -4,7 +4,7 @@ import { ArrowRight } from 'lucide-react';
 import { ProductCard } from '../components/product/ProductCard';
 import { Button } from '../components/ui/Button';
 import { supabase } from '../lib/supabase';
-import { HeroSliderConfig, SectionConfig, InstagramConfig, NewsletterConfig, HeroSlide } from '../types';
+import { HeroSliderConfig, SectionConfig, InstagramConfig, NewsletterConfig, FeaturedContentConfig, HeroSlide } from '../types';
 import { useCategories } from '../hooks/useCategories';
 import { useProducts } from '../hooks/useProducts';
 import { HeroSlider } from '../components/hero/HeroSlider';
@@ -26,6 +26,7 @@ export default function Home() {
   const [salesConfig, setSalesConfig] = useState<SectionConfig | null>(null);
   const [instagramConfig, setInstagramConfig] = useState<InstagramConfig | null>(null);
   const [newsletterConfig, setNewsletterConfig] = useState<NewsletterConfig | null>(null);
+  const [featuredContentConfig, setFeaturedContentConfig] = useState<FeaturedContentConfig | null>(null);
 
   // Valeurs par défaut
   const defaultHeroSlides: HeroSlide[] = [
@@ -69,6 +70,7 @@ export default function Home() {
       setSalesConfig(null);
       setInstagramConfig(null);
       setNewsletterConfig(null);
+      setFeaturedContentConfig(null);
 
       // Charger toutes les configs pour vérifier is_active
       const { data, error } = await supabase
@@ -107,6 +109,9 @@ export default function Home() {
             case 'newsletter':
               setNewsletterConfig(config.config_data as NewsletterConfig);
               break;
+            case 'featured_content':
+              setFeaturedContentConfig(config.config_data as FeaturedContentConfig);
+              break;
           }
         });
       }
@@ -121,45 +126,47 @@ export default function Home() {
     <div className="space-y-16 pb-16">
       {/* Hero Slider */}
       {heroSlides.length > 0 && (
-        <HeroSlider
-          slides={heroSlides}
-          autoplay={heroConfig?.autoplay !== false}
-          autoplayInterval={heroConfig?.autoplayInterval || 5000}
-          height="600px"
-        />
+        <div className="-mt-20 md:-mt-24">
+          <HeroSlider
+            slides={heroSlides}
+            autoplay={heroConfig?.autoplay !== false}
+            autoplayInterval={heroConfig?.autoplayInterval || 5000}
+            height="calc(600px + 80px)"
+          />
+        </div>
       )}
 
       {/* Catégories */}
-      {categoriesConfig && categoriesConfig.isVisible !== false && (
-        <section className="container mx-auto px-4">
+      {categoriesConfig && categoriesConfig.isVisible !== false && categories.length > 0 && (
+        <section className="container mx-auto px-4 mt-40">
           <h2 className="text-3xl font-heading font-bold text-text-dark mb-8 text-center">
             {categoriesConfig?.title || 'Nos Catégories'}
           </h2>
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-          {categories.map((category) => (
-            <Link
-              key={category.id}
-              to={`/boutique?category=${category.slug}`}
-              className="group relative aspect-square overflow-hidden rounded-lg shadow-sm hover:shadow-lg transition-all duration-300"
-            >
-              <img
-                src={category.image}
-                alt={category.name}
-                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end">
-                <h3 className="text-white font-heading font-semibold p-4 text-lg">
-                  {category.name}
-                </h3>
-              </div>
-            </Link>
-          ))}
-        </div>
-      </section>
+          <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${Math.min(categories.length, 6)}, 1fr)` }}>
+            {categories.map((category) => (
+              <Link
+                key={category.id}
+                to={`/boutique?category=${category.slug}`}
+                className="group relative aspect-square overflow-hidden rounded-lg shadow-sm hover:shadow-lg transition-all duration-300"
+              >
+                <img
+                  src={category.image}
+                  alt={category.name}
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end">
+                  <h3 className="text-white font-heading font-semibold p-4 text-lg">
+                    {category.name}
+                  </h3>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </section>
       )}
 
       {/* Nouvelles Arrivées */}
-      {newArrivalsConfig?.isVisible !== false && (
+      {newArrivalsConfig?.isVisible !== false && newArrivals.length > 0 && (
         <section className="container mx-auto px-4">
           <div className="flex items-center justify-between mb-8">
             <h2 className="text-3xl font-heading font-bold text-text-dark">
@@ -184,7 +191,7 @@ export default function Home() {
       )}
 
       {/* Best Sellers */}
-      {bestSellersConfig?.isVisible !== false && (
+      {bestSellersConfig?.isVisible !== false && bestSellers.length > 0 && (
         <section className="container mx-auto px-4">
           <div className="flex items-center justify-between mb-8">
             <h2 className="text-3xl font-heading font-bold text-text-dark">
@@ -234,13 +241,13 @@ export default function Home() {
       )}
 
       {/* Feed Instagram */}
-      {instagramConfig && instagramConfig.isVisible !== false && (
+      {instagramConfig && instagramConfig.isVisible !== false && instagramConfig?.posts && instagramConfig.posts.length > 0 && (
         <section className="container mx-auto px-4">
           <h2 className="text-3xl font-heading font-bold text-text-dark mb-8 text-center">
             {instagramConfig?.title || 'Suivez-nous sur Instagram'}
           </h2>
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
-            {(instagramConfig?.posts || Array.from({ length: 6 })).map((post: any, i: number) => (
+            {instagramConfig.posts.map((post: any, i: number) => (
               <a
                 key={i}
                 href={post?.link || '#'}
@@ -259,26 +266,38 @@ export default function Home() {
         </section>
       )}
 
-      {/* Newsletter */}
-      {newsletterConfig?.isVisible !== false && (
+      {/* Contenu mis en avant */}
+      {featuredContentConfig && featuredContentConfig.isVisible !== false && (
         <section className="container mx-auto px-4">
-          <div className="bg-gradient-to-br from-primary/20 to-accent/20 rounded-2xl p-8 md:p-12 text-center border-2 border-primary/30">
-            <h2 className="text-3xl font-heading font-bold text-text-dark mb-4">
-              {newsletterConfig?.title || 'Restez informée de nos nouveautés'}
-            </h2>
-            <p className="text-text-dark/90 mb-6 max-w-md mx-auto font-medium">
-              {newsletterConfig?.description || 'Inscrivez-vous à notre newsletter pour recevoir nos offres exclusives et être la première informée de nos nouvelles collections.'}
-            </p>
-            <form className="flex flex-col sm:flex-row gap-3 max-w-md mx-auto">
-              <input
-                type="email"
-                placeholder={newsletterConfig?.placeholder || 'Votre adresse email'}
-                className="flex-1 px-4 py-3 rounded-lg border-2 border-secondary/30 focus:outline-none focus:border-secondary bg-white"
-              />
-              <Button variant="primary" size="lg">
-                {newsletterConfig?.buttonText || 'S\'abonner'}
-              </Button>
-            </form>
+          <div className="bg-gradient-to-br from-primary/20 to-accent/20 rounded-2xl p-8 md:p-12 border-2 border-primary/30">
+            <div className={`flex flex-col ${featuredContentConfig.image ? 'md:flex-row' : ''} items-center gap-8`}>
+              {featuredContentConfig.image && (
+                <div className="flex-shrink-0 w-full md:w-1/2">
+                  <img
+                    src={featuredContentConfig.image}
+                    alt={featuredContentConfig.title}
+                    className="w-full h-auto rounded-lg shadow-lg object-cover"
+                  />
+                </div>
+              )}
+              <div className={`flex-1 text-center ${featuredContentConfig.image ? 'md:text-left' : ''}`}>
+                <h2 className="text-3xl font-heading font-bold text-text-dark mb-4">
+                  {featuredContentConfig.title}
+                </h2>
+                <p className="text-text-dark/90 mb-6 max-w-2xl mx-auto font-medium">
+                  {featuredContentConfig.description}
+                </p>
+                {featuredContentConfig.buttonText && featuredContentConfig.buttonLink && (
+                  <div className="flex justify-center md:justify-start">
+                    <Link to={featuredContentConfig.buttonLink}>
+                      <Button variant="primary" size="lg">
+                        {featuredContentConfig.buttonText}
+                      </Button>
+                    </Link>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         </section>
       )}

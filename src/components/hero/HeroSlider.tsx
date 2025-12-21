@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronRight, ChevronLeft } from 'lucide-react';
+import { ChevronRight } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { HeroSlide } from '../../types';
 
@@ -111,7 +111,7 @@ export function HeroSlider({
   return (
     <section
       ref={containerRef}
-      className="relative overflow-hidden"
+      className="relative overflow-hidden z-0"
       style={{ height }}
       onMouseEnter={() => setIsPaused(true)}
       onMouseLeave={() => setIsPaused(false)}
@@ -138,7 +138,7 @@ export function HeroSlider({
             <div className="absolute inset-0 bg-gradient-to-r from-black/60 via-black/40 to-black/60"></div>
             
             {/* Contenu du slide */}
-            <div className="absolute inset-0 flex items-center justify-center">
+            <div className="absolute inset-0 flex items-center justify-center pt-20">
               <div className="text-center text-white px-4 max-w-4xl mx-auto">
                 <motion.h1
                   className="text-4xl md:text-5xl lg:text-6xl font-heading font-bold mb-4"
@@ -178,26 +178,6 @@ export function HeroSlider({
         </motion.div>
       </AnimatePresence>
 
-      {/* Boutons de navigation */}
-      {totalSlides > 1 && (
-        <>
-          <button
-            onClick={goToPrevious}
-            className="absolute left-4 top-1/2 -translate-y-1/2 z-10 bg-white/20 hover:bg-white/30 backdrop-blur-sm rounded-full p-3 transition-all duration-300 hover:scale-110"
-            aria-label="Slide précédent"
-          >
-            <ChevronLeft size={24} className="text-white" />
-          </button>
-          <button
-            onClick={goToNext}
-            className="absolute right-4 top-1/2 -translate-y-1/2 z-10 bg-white/20 hover:bg-white/30 backdrop-blur-sm rounded-full p-3 transition-all duration-300 hover:scale-110"
-            aria-label="Slide suivant"
-          >
-            <ChevronRight size={24} className="text-white" />
-          </button>
-        </>
-      )}
-
       {/* Indicateurs de navigation (dots) */}
       {totalSlides > 1 && (
         <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-10 flex gap-2">
@@ -213,15 +193,6 @@ export function HeroSlider({
               aria-label={`Aller au slide ${index + 1}`}
             />
           ))}
-        </div>
-      )}
-
-      {/* Indicateur de pause/play (optionnel) */}
-      {autoplay && totalSlides > 1 && (
-        <div className="absolute top-4 right-4 z-10">
-          <div className="bg-white/20 backdrop-blur-sm rounded-full px-3 py-1.5 text-xs text-white">
-            {isPaused ? '⏸ Pause' : '▶ Lecture'}
-          </div>
         </div>
       )}
     </section>

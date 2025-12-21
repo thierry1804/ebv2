@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
-import { LandingPageConfig, HeroSliderConfig, HeaderLogoConfig, PromotionalBannerConfig, SectionConfig, InstagramConfig, NewsletterConfig } from '../../types';
+import { LandingPageConfig, HeroSliderConfig, HeaderLogoConfig, PromotionalBannerConfig, SectionConfig, InstagramConfig, NewsletterConfig, FeaturedContentConfig } from '../../types';
 import { Save, Edit, Eye, EyeOff, Plus, Trash2, Image as ImageIcon, Upload, X } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Modal } from '../../components/ui/Modal';
@@ -13,7 +13,9 @@ export default function AdminLandingPage() {
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [formData, setFormData] = useState<any>(null);
   const [uploadingSlides, setUploadingSlides] = useState<Set<number>>(new Set());
+  const [uploadingFeaturedImage, setUploadingFeaturedImage] = useState(false);
   const fileInputRefs = useRef<{ [key: number]: HTMLInputElement | null }>({});
+  const featuredImageInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     loadConfigs();
@@ -169,6 +171,119 @@ export default function AdminLandingPage() {
     if (fileInputRefs.current[slideIndex]) {
       fileInputRefs.current[slideIndex]!.value = '';
     }
+  };
+
+  const handleFeaturedContentImageUpload = async (file: File) => {
+    try {
+      setUploadingFeaturedImage(true);
+
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast.error('Vous devez être connecté');
+        setUploadingFeaturedImage(false);
+        return;
+      }
+
+      // Convertir l'image en WebP
+      const webpFile = await convertToWebP(file);
+
+      // Générer un nom de fichier unique
+      const fileExt = webpFile.name.split('.').pop();
+      const fileName = `hero/featured/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+
+      // Upload vers Supabase Storage
+      const { error: uploadError } = await supabase.storage
+        .from('hero')
+        .upload(fileName, webpFile, {
+          cacheControl: '3600',
+          upsert: false,
+        });
+
+      if (uploadError) {
+        if (uploadError.message.includes('Bucket not found')) {
+          toast.error('Le bucket "hero" n\'existe pas. Veuillez le créer dans Supabase Storage.');
+        } else {
+          throw uploadError;
+        }
+        setUploadingFeaturedImage(false);
+        return;
+      }
+
+      // Obtenir l'URL publique
+      const { data: { publicUrl } } = supabase.storage
+        .from('hero')
+        .getPublicUrl(fileName);
+
+      // Mettre à jour le formulaire avec la nouvelle URL
+      const data = formData as FeaturedContentConfig;
+      setFormData({ ...data, image: publicUrl });
+
+      toast.success('Image uploadée avec succès');
+    } catch (error: any) {
+      console.error('Erreur lors de l\'upload:', error);
+      toast.error(error.message || 'Erreur lors de l\'upload de l\'image');
+    } finally {
+      setUploadingFeaturedImage(false);
+    }
+  };
+
+  const handleFeaturedContentFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      handleFeaturedContentImageUpload(file);
+    }
+    // Réinitialiser l'input pour permettre de sélectionner le même fichier à nouveau
+    if (featuredImageInputRef.current) {
+      featuredImageInputRef.current.value = '';
+    }
+  };
+
+  const deleteImageFromStorage = async (imageUrl: string, bucket: string): Promise<boolean> => {
+    try {
+      // Extraire le chemin du fichier depuis l'URL publique Supabase
+      // Format: https://[project-ref].supabase.co/storage/v1/object/public/[bucket]/[path]
+      const urlPattern = new RegExp(`/storage/v1/object/public/${bucket}/(.+)`);
+      const match = imageUrl.match(urlPattern);
+      
+      if (!match || !match[1]) {
+        console.warn('Impossible d\'extraire le chemin du fichier depuis l\'URL:', imageUrl);
+        return false;
+      }
+
+      const filePath = match[1];
+      
+      // Supprimer le fichier du bucket
+      const { error } = await supabase.storage
+        .from(bucket)
+        .remove([filePath]);
+
+      if (error) {
+        console.error('Erreur lors de la suppression du fichier:', error);
+        return false;
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Erreur lors de la suppression du fichier:', error);
+      return false;
+    }
+  };
+
+  const handleRemoveFeaturedImage = async () => {
+    const data = formData as FeaturedContentConfig;
+    const currentImage = data.image;
+    
+    // Si l'image provient de Supabase Storage, la supprimer du bucket
+    if (currentImage && currentImage.includes('supabase.co/storage')) {
+      const deleted = await deleteImageFromStorage(currentImage, 'hero');
+      if (deleted) {
+        toast.success('Image supprimée du stockage');
+      } else {
+        toast.error('Erreur lors de la suppression de l\'image du stockage');
+      }
+    }
+
+    setFormData({ ...data, image: '' });
   };
 
   const renderEditor = (config: LandingPageConfig) => {
@@ -592,6 +707,119 @@ export default function AdminLandingPage() {
               type="text"
               value={data.buttonText || ''}
               onChange={(e) => setFormData({ ...data, buttonText: e.target.value })}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+            />
+          </div>
+          <div>
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={data.isVisible !== false}
+                onChange={(e) => setFormData({ ...data, isVisible: e.target.checked })}
+                className="rounded"
+              />
+              <span className="text-sm font-medium text-gray-700">Visible</span>
+            </label>
+          </div>
+        </div>
+      );
+    }
+
+    if (key === 'featured_content') {
+      const data = formData as FeaturedContentConfig;
+      return (
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Titre</label>
+            <input
+              type="text"
+              value={data.title || ''}
+              onChange={(e) => setFormData({ ...data, title: e.target.value })}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+            <textarea
+              value={data.description || ''}
+              onChange={(e) => setFormData({ ...data, description: e.target.value })}
+              rows={4}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Image</label>
+            <div className="space-y-2">
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={data.image || ''}
+                  onChange={(e) => setFormData({ ...data, image: e.target.value })}
+                  placeholder="https://... ou uploader une image"
+                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg"
+                />
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleFeaturedContentFileSelect}
+                  ref={featuredImageInputRef}
+                  className="hidden"
+                  id="featured-content-image-upload"
+                />
+                <label
+                  htmlFor="featured-content-image-upload"
+                  className="px-4 py-2 bg-secondary hover:bg-secondary/90 text-white rounded-lg cursor-pointer flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {uploadingFeaturedImage ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      Upload...
+                    </>
+                  ) : (
+                    <>
+                      <Upload size={18} />
+                      Uploader
+                    </>
+                  )}
+                </label>
+              </div>
+              {data.image && (
+                <div className="relative">
+                  <img
+                    src={data.image}
+                    alt="Aperçu"
+                    className="w-full max-w-md h-auto rounded-lg border border-gray-300"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).style.display = 'none';
+                    }}
+                  />
+                  <button
+                    onClick={handleRemoveFeaturedImage}
+                    className="absolute top-2 right-2 bg-red-500 hover:bg-red-600 text-white rounded-full p-1"
+                    title="Supprimer l'image"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Texte du bouton (optionnel)</label>
+            <input
+              type="text"
+              value={data.buttonText || ''}
+              onChange={(e) => setFormData({ ...data, buttonText: e.target.value })}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Lien du bouton (optionnel)</label>
+            <input
+              type="text"
+              value={data.buttonLink || ''}
+              onChange={(e) => setFormData({ ...data, buttonLink: e.target.value })}
+              placeholder="/boutique"
               className="w-full px-4 py-2 border border-gray-300 rounded-lg"
             />
           </div>

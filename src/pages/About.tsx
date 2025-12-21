@@ -3,13 +3,13 @@ export default function About() {
     <div className="container mx-auto px-4 py-16">
       <div className="max-w-4xl mx-auto">
         <h1 className="text-4xl font-heading font-bold text-text-dark mb-8 text-center">
-          À Propos de ByValsue
+          À propos de ByValsue
         </h1>
 
         <div className="space-y-8 text-text-dark/80">
           <section>
             <h2 className="text-2xl font-heading font-semibold text-text-dark mb-4">
-              Notre Histoire
+              Notre histoire
             </h2>
             <p className="mb-4">
               ByValsue est née d'une passion pour la mode féminine haut de gamme et d'un désir de
@@ -24,7 +24,7 @@ export default function About() {
 
           <section>
             <h2 className="text-2xl font-heading font-semibold text-text-dark mb-4">
-              Nos Valeurs
+              Nos valeurs
             </h2>
             <ul className="list-disc list-inside space-y-2">
               <li>
@@ -47,7 +47,7 @@ export default function About() {
 
           <section>
             <h2 className="text-2xl font-heading font-semibold text-text-dark mb-4">
-              Notre Équipe
+              Notre équipe
             </h2>
             <p>
               Notre équipe passionnée travaille sans relâche pour vous offrir la meilleure

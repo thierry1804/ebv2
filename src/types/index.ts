@@ -192,3 +192,12 @@ export interface NewsletterConfig {
   isVisible: boolean;
 }
 
+export interface FeaturedContentConfig {
+  title: string;
+  description: string;
+  image?: string;
+  buttonText?: string;
+  buttonLink?: string;
+  isVisible: boolean;
+}
+
