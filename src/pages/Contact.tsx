@@ -115,23 +115,20 @@ export default function Contact() {
     }
   };
 
-  // Configuration Google Maps
-  const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || 'AIzaSyBFw0Qbyq9zTFTd-tUY6d-s6U4iGGbqJ0E';
-  const mapAddress = encodeURIComponent('Ambohijanahary, Antananarivo, Madagascar');
-  const mapEmbedUrl = `https://www.google.com/maps/embed/v1/place?key=${GOOGLE_MAPS_API_KEY}&q=${mapAddress}&zoom=15`;
+  const mapEmbedUrl = 'https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d11663.085015077057!2d47.474133251727245!3d-18.83184333245488!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x21f08176a89c0c7b%3A0x2b03d7f2381b5137!2sAmbohijanahary%2C%20Tananarive!5e1!3m2!1sfr!2smg!4v1766295190681!5m2!1sfr!2smg';
 
   return (
     <div className="relative min-h-screen">
       {/* Carte Google Maps en arrière-plan */}
-      <div className="absolute inset-0 z-0 opacity-20">
+      <div className="absolute inset-0 z-0 opacity-60">
         <iframe
+          src={mapEmbedUrl}
           width="100%"
           height="100%"
           style={{ border: 0, filter: 'grayscale(100%)' }}
-          loading="lazy"
           allowFullScreen
+          loading="lazy"
           referrerPolicy="no-referrer-when-downgrade"
-          src={mapEmbedUrl}
         ></iframe>
       </div>
 
@@ -264,7 +261,7 @@ export default function Contact() {
                     <div>
                       <p className="font-medium text-text-dark">Adresse</p>
                       <p className="text-text-dark/80">
-                        Ambohijanahary, Antananarivo, Madagascar
+                        Ambohijanahary, Tananarive, Madagascar
                       </p>
                     </div>
                   </div>
@@ -289,13 +286,13 @@ export default function Contact() {
                 </h3>
                 <div className="aspect-video rounded-lg overflow-hidden">
                   <iframe
+                    src={mapEmbedUrl}
                     width="100%"
                     height="100%"
                     style={{ border: 0 }}
-                    loading="lazy"
                     allowFullScreen
+                    loading="lazy"
                     referrerPolicy="no-referrer-when-downgrade"
-                    src={mapEmbedUrl}
                   ></iframe>
                 </div>
               </div>
