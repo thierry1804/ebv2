@@ -36,7 +36,7 @@ export function Offcanvas({
     sm: 'w-80',
     md: 'w-96',
     lg: 'w-[600px]',
-    xl: 'w-[800px]',
+    xl: 'w-[1200px]',
   };
 
   const positions = {

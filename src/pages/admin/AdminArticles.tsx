@@ -1,16 +1,20 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import { DatabaseBlogPost } from '../../types';
-import { Plus, Edit, Trash2, Eye, EyeOff } from 'lucide-react';
+import { Plus, Edit, Trash2, Eye, EyeOff, Upload, X } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import toast from 'react-hot-toast';
-import { Modal } from '../../components/ui/Modal';
+import { Offcanvas } from '../../components/ui/Offcanvas';
+import { markdownToHtml } from '../../utils/markdown';
+import { convertToWebP } from '../../utils/imageUtils';
 
 export default function AdminArticles() {
   const [articles, setArticles] = useState<DatabaseBlogPost[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingArticle, setEditingArticle] = useState<DatabaseBlogPost | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
   const [formData, setFormData] = useState({
     title: '',
     excerpt: '',
@@ -120,10 +124,140 @@ export default function AdminArticles() {
     }
   };
 
+  const deleteImageFromStorage = async (imageUrl: string, bucket: string): Promise<boolean> => {
+    try {
+      // Extraire le chemin du fichier depuis l'URL publique Supabase
+      const urlPattern = new RegExp(`/storage/v1/object/public/${bucket}/(.+)`);
+      const match = imageUrl.match(urlPattern);
+      
+      if (!match || !match[1]) {
+        console.warn('Impossible d\'extraire le chemin du fichier depuis l\'URL:', imageUrl);
+        return false;
+      }
+
+      const filePath = match[1];
+      
+      // Supprimer le fichier du bucket
+      const { error } = await supabase.storage
+        .from(bucket)
+        .remove([filePath]);
+
+      if (error) {
+        console.error('Erreur lors de la suppression du fichier:', error);
+        return false;
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Erreur lors de la suppression du fichier:', error);
+      return false;
+    }
+  };
+
+  const handleImageUpload = async (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      toast.error('Veuillez sélectionner un fichier image');
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('L\'image ne doit pas dépasser 5 Mo');
+      return;
+    }
+
+    setUploadingImage(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast.error('Vous devez être connecté');
+        setUploadingImage(false);
+        return;
+      }
+
+      // Convertir l'image en WebP
+      const webpFile = await convertToWebP(file);
+
+      // Générer un nom de fichier unique
+      const fileExt = webpFile.name.split('.').pop();
+      const fileName = `hero/blog/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+
+      // Upload vers Supabase Storage
+      const { error: uploadError } = await supabase.storage
+        .from('hero')
+        .upload(fileName, webpFile, {
+          cacheControl: '3600',
+          upsert: false,
+        });
+
+      if (uploadError) {
+        if (uploadError.message.includes('Bucket not found')) {
+          toast.error('Le bucket "hero" n\'existe pas. Veuillez le créer dans Supabase Storage.');
+        } else {
+          throw uploadError;
+        }
+        setUploadingImage(false);
+        return;
+      }
+
+      // Obtenir l'URL publique
+      const { data: { publicUrl } } = supabase.storage
+        .from('hero')
+        .getPublicUrl(fileName);
+
+      // Mettre à jour le formulaire avec la nouvelle URL
+      setFormData({ ...formData, image: publicUrl });
+
+      toast.success('Image uploadée avec succès');
+    } catch (error: any) {
+      console.error('Erreur lors de l\'upload:', error);
+      toast.error(error.message || 'Erreur lors de l\'upload de l\'image');
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
+  const handleImageFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      handleImageUpload(file);
+    }
+    // Réinitialiser l'input
+    if (imageInputRef.current) {
+      imageInputRef.current.value = '';
+    }
+  };
+
+  const handleRemoveImage = async () => {
+    const currentImage = formData.image;
+    
+    // Si l'image provient de Supabase Storage, la supprimer du bucket
+    if (currentImage && currentImage.includes('supabase.co/storage')) {
+      const deleted = await deleteImageFromStorage(currentImage, 'hero');
+      if (deleted) {
+        toast.success('Image supprimée du stockage');
+      } else {
+        toast.error('Erreur lors de la suppression de l\'image du stockage');
+      }
+    }
+
+    setFormData({ ...formData, image: '' });
+  };
+
   const handleDelete = async (id: string) => {
     if (!confirm('Êtes-vous sûr de vouloir supprimer cet article ?')) return;
 
     try {
+      // Récupérer l'article pour obtenir l'URL de l'image
+      const article = articles.find(a => a.id === id);
+      
+      // Si l'article a une image dans Supabase Storage, la supprimer
+      if (article?.image && article.image.includes('supabase.co/storage')) {
+        const deleted = await deleteImageFromStorage(article.image, 'hero');
+        if (deleted) {
+          toast.success('Image supprimée du stockage');
+        }
+      }
+
       const { error } = await supabase.from('blog_posts').delete().eq('id', id);
       if (error) throw error;
       toast.success('Article supprimé avec succès');
@@ -257,7 +391,25 @@ export default function AdminArticles() {
         </table>
       </div>
 
-      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editingArticle ? 'Modifier l\'article' : 'Nouvel article'}>
+      <Offcanvas
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        title={editingArticle ? 'Modifier l\'article' : 'Nouvel article'}
+        width="xl"
+        footer={
+          <div className="flex justify-end gap-3">
+            <Button
+              onClick={() => setIsModalOpen(false)}
+              className="bg-gray-200 hover:bg-gray-300 text-gray-800"
+            >
+              Annuler
+            </Button>
+            <Button onClick={handleSave} className="bg-secondary hover:bg-secondary/90">
+              {editingArticle ? 'Modifier' : 'Créer'}
+            </Button>
+          </div>
+        }
+      >
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Titre</label>
@@ -278,22 +430,84 @@ export default function AdminArticles() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Contenu</label>
-            <textarea
-              value={formData.content}
-              onChange={(e) => setFormData({ ...formData, content: e.target.value })}
-              rows={8}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-secondary"
-            />
+            <label className="block text-sm font-medium text-gray-700 mb-1">Contenu (Markdown)</label>
+            <div className="grid grid-cols-2 gap-4">
+              {/* Éditeur Markdown */}
+              <div>
+                <textarea
+                  value={formData.content}
+                  onChange={(e) => setFormData({ ...formData, content: e.target.value })}
+                  rows={20}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-secondary font-mono text-sm"
+                  placeholder="Écrivez votre contenu en Markdown ici..."
+                />
+              </div>
+              {/* Prévisualisation */}
+              <div className="border border-gray-300 rounded-lg p-4 bg-gray-50 overflow-y-auto max-h-[500px]">
+                <div className="text-xs text-gray-500 mb-2 font-semibold">Aperçu :</div>
+                <div
+                  className="prose prose-sm max-w-none text-text-dark/80"
+                  dangerouslySetInnerHTML={{ __html: markdownToHtml(formData.content) }}
+                />
+              </div>
+            </div>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Image URL</label>
-            <input
-              type="text"
-              value={formData.image}
-              onChange={(e) => setFormData({ ...formData, image: e.target.value })}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-secondary"
-            />
+            <label className="block text-sm font-medium text-gray-700 mb-1">Image</label>
+            <div className="space-y-2">
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={formData.image}
+                  onChange={(e) => setFormData({ ...formData, image: e.target.value })}
+                  placeholder="https://... ou uploader une image"
+                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-secondary"
+                />
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageFileSelect}
+                  ref={imageInputRef}
+                  className="hidden"
+                  id="article-image-upload"
+                />
+                <label
+                  htmlFor="article-image-upload"
+                  className="px-4 py-2 bg-secondary hover:bg-secondary/90 text-white rounded-lg cursor-pointer flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {uploadingImage ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      Upload...
+                    </>
+                  ) : (
+                    <>
+                      <Upload size={18} />
+                      Uploader
+                    </>
+                  )}
+                </label>
+              </div>
+              {formData.image && (
+                <div className="relative">
+                  <img
+                    src={formData.image}
+                    alt="Aperçu"
+                    className="w-full max-w-md h-auto rounded-lg border border-gray-300"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).style.display = 'none';
+                    }}
+                  />
+                  <button
+                    onClick={handleRemoveImage}
+                    className="absolute top-2 right-2 bg-red-500 hover:bg-red-600 text-white rounded-full p-1"
+                    title="Supprimer l'image"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -338,19 +552,8 @@ export default function AdminArticles() {
               Publier immédiatement
             </label>
           </div>
-          <div className="flex justify-end gap-3 pt-4">
-            <Button
-              onClick={() => setIsModalOpen(false)}
-              className="bg-gray-200 hover:bg-gray-300 text-gray-800"
-            >
-              Annuler
-            </Button>
-            <Button onClick={handleSave} className="bg-secondary hover:bg-secondary/90">
-              {editingArticle ? 'Modifier' : 'Créer'}
-            </Button>
-          </div>
         </div>
-      </Modal>
+      </Offcanvas>
     </div>
   );
 }
