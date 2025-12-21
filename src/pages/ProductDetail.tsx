@@ -215,6 +215,11 @@ export default function ProductDetail() {
                 onSelectColor={setSelectedColor}
               />
             )}
+            {(product.sizes && product.sizes.length > 0) || (product.colors && product.colors.length > 0) ? (
+              <p className="text-sm text-text-dark/60 italic">
+                Les tailles et couleurs affichées sont celles disponibles.
+              </p>
+            ) : null}
             <QuantitySelector
               quantity={quantity}
               onIncrease={() => setQuantity((q) => q + 1)}
@@ -255,7 +260,7 @@ export default function ProductDetail() {
           {/* Stock */}
           <p className="text-sm text-text-dark/80 mb-8">
             {product.stock > 0 ? (
-              <span className="text-green-600">En stock ({product.stock} disponible{product.stock > 1 ? 's' : ''})</span>
+              <span className="text-green-600">En stock</span>
             ) : (
               <span className="text-red-600">Rupture de stock</span>
             )}
