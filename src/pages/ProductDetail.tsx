@@ -31,6 +31,15 @@ export default function ProductDetail() {
     'description'
   );
 
+  // Suivre la vue du produit avec Google Analytics
+  // IMPORTANT: Ce hook doit être appelé AVANT tout return conditionnel
+  useEffect(() => {
+    if (product) {
+      const displayPrice = product.salePrice || product.price;
+      analytics.viewProduct(product.id, product.name, displayPrice);
+    }
+  }, [product?.id, product?.name, product?.salePrice, product?.price]);
+
   if (!product) {
     return (
       <div className="container mx-auto px-4 py-16 text-center">
@@ -50,11 +59,6 @@ export default function ProductDetail() {
   const relatedProducts = products
     .filter((p) => p.category === product.category && p.id !== product.id)
     .slice(0, 4);
-
-  // Suivre la vue du produit avec Google Analytics
-  useEffect(() => {
-    analytics.viewProduct(product.id, product.name, displayPrice);
-  }, [product.id, product.name, displayPrice]);
 
   const handleAddToCart = () => {
     // Vérifier uniquement les attributs qui existent pour le produit
