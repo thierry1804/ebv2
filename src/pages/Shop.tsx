@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ProductCard } from '../components/product/ProductCard';
 import { Button } from '../components/ui/Button';
@@ -6,6 +6,7 @@ import { formatPrice } from '../utils/formatters';
 import { useCategories } from '../hooks/useCategories';
 import { useProducts } from '../hooks/useProducts';
 import { SEO } from '../components/seo/SEO';
+import { normalizeColors, ColorWithHex } from '../config/colors';
 
 export default function Shop() {
   const { categories } = useCategories();
@@ -17,16 +18,15 @@ export default function Shop() {
   );
   const [selectedSizes, setSelectedSizes] = useState<string[]>([]);
   const [selectedColors, setSelectedColors] = useState<string[]>([]);
-  const [priceRange, setPriceRange] = useState<[number, number]>([0, 200000]);
   const [sortBy, setSortBy] = useState('relevance');
   const searchQuery = searchParams.get('search') || '';
   const filterNew = searchParams.get('filter') === 'new';
   const filterSale = searchParams.get('filter') === 'sale';
 
-  // Tous les prix disponibles
-  const allPrices = products.map((p) => p.salePrice || p.price);
-  const minPrice = Math.min(...allPrices);
-  const maxPrice = Math.max(...allPrices);
+  // Prix min/max (pour un futur slider si besoin)
+  const allPrices = useMemo(() => products.map((p) => p.salePrice || p.price), [products]);
+  const minPrice = allPrices.length > 0 ? Math.min(...allPrices) : 0;
+  const maxPrice = allPrices.length > 0 ? Math.max(...allPrices) : 200000;
 
   // Filtrage des produits
   const filteredProducts = useMemo(() => {
@@ -57,11 +57,11 @@ export default function Shop() {
       filtered = filtered.filter((p) => p.isOnSale);
     }
 
-    // Prix
-    filtered = filtered.filter((p) => {
-      const price = p.salePrice || p.price;
-      return price >= priceRange[0] && price <= priceRange[1];
-    });
+    // Prix - DÉSACTIVÉ TEMPORAIREMENT POUR TESTER LA FLUIDITÉ
+    // filtered = filtered.filter((p) => {
+    //   const price = p.salePrice || p.price;
+    //   return price >= priceRange[0] && price <= priceRange[1];
+    // });
 
     // Tailles
     if (selectedSizes.length > 0) {
@@ -110,22 +110,27 @@ export default function Shop() {
     selectedCategory,
     filterNew,
     filterSale,
-    priceRange,
     selectedSizes,
     selectedColors,
     sortBy,
   ]);
 
   const allSizes = Array.from(new Set(products.flatMap((p) => p.sizes))).sort();
-  // Extraire les noms de couleurs (gérer les deux formats : string[] ou ColorWithHex[])
-  const allColors = Array.from(new Set(
-    products.flatMap((p) => {
-      if (!Array.isArray(p.colors) || p.colors.length === 0) return [];
-      return typeof p.colors[0] === 'string'
-        ? p.colors as string[]
-        : (p.colors as Array<{name: string, hex: string}>).map(c => c.name);
-    })
-  )).sort();
+  // Extraire les couleurs avec leur hex (gérer les deux formats : string[] ou ColorWithHex[])
+  const allColorsWithHex = useMemo(() => {
+    const colorMap = new Map<string, ColorWithHex>();
+    products.forEach((p) => {
+      if (Array.isArray(p.colors) && p.colors.length > 0) {
+        const normalized = normalizeColors(p.colors);
+        normalized.forEach((color) => {
+          if (!colorMap.has(color.name)) {
+            colorMap.set(color.name, color);
+          }
+        });
+      }
+    });
+    return Array.from(colorMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [products]);
 
   const toggleSize = (size: string) => {
     setSelectedSizes((prev) =>
@@ -143,11 +148,12 @@ export default function Shop() {
     setSelectedCategory('all');
     setSelectedSizes([]);
     setSelectedColors([]);
-    setPriceRange([0, 200000]);
     setSortBy('relevance');
   };
 
-  const FilterSidebar = () => (
+
+  const FilterSidebar = ({ isVisible = true }: { isVisible?: boolean }) => {
+    return (
     <div className="space-y-6">
       {/* Catégories */}
       <div>
@@ -180,27 +186,6 @@ export default function Shop() {
         </div>
       </div>
 
-      {/* Prix */}
-      <div>
-        <h3 className="font-heading font-semibold text-lg mb-3 text-text-dark">Prix</h3>
-        <div className="space-y-4">
-          <div className="px-2">
-            <input
-              type="range"
-              min={minPrice}
-              max={maxPrice}
-              value={priceRange[1]}
-              onChange={(e) => setPriceRange([priceRange[0], Number(e.target.value)])}
-              className="w-full"
-            />
-          </div>
-          <div className="flex justify-between text-sm">
-            <span>{formatPrice(priceRange[0])}</span>
-            <span>{formatPrice(priceRange[1])}</span>
-          </div>
-        </div>
-      </div>
-
       {/* Tailles */}
       <div>
         <h3 className="font-heading font-semibold text-lg mb-3 text-text-dark">Tailles</h3>
@@ -225,34 +210,27 @@ export default function Shop() {
       <div>
         <h3 className="font-heading font-semibold text-lg mb-3 text-text-dark">Couleurs</h3>
         <div className="flex flex-wrap gap-2">
-          {allColors.map((color) => (
-            <button
-              key={color}
-              onClick={() => toggleColor(color)}
-              className={`w-8 h-8 rounded-full border-2 transition-all ${
-                selectedColors.includes(color)
-                  ? 'border-secondary scale-110 ring-2 ring-secondary'
-                  : 'border-gray-300 hover:border-primary'
-              }`}
-              style={{
-                backgroundColor:
-                  color === 'Noir'
-                    ? '#000'
-                    : color === 'Blanc'
-                    ? '#fff'
-                    : color === 'Rose'
-                    ? '#E6A1B0'
-                    : color === 'Beige'
-                    ? '#F5E6D3'
-                    : color === 'Marine'
-                    ? '#1e3a8a'
-                    : color === 'Bordeaux'
-                    ? '#7f1d1d'
-                    : '#ccc',
-              }}
-              title={color}
-            />
-          ))}
+          {allColorsWithHex.map((color) => {
+            const isWhite = color.hex === '#ecf0f1' || color.hex === '#FFFFFF' || color.hex === '#ffffff' || color.name === 'Blanc';
+            return (
+              <button
+                key={color.name}
+                onClick={() => toggleColor(color.name)}
+                className={`w-8 h-8 rounded-full border-2 transition-all ${
+                  isWhite ? 'border-gray-300' : ''
+                } ${
+                  selectedColors.includes(color.name)
+                    ? 'border-secondary scale-110 ring-2 ring-secondary'
+                    : 'border-gray-300 hover:border-primary'
+                }`}
+                style={{
+                  backgroundColor: color.hex,
+                }}
+                title={color.name}
+                aria-label={color.name}
+              />
+            );
+          })}
         </div>
       </div>
 
@@ -260,7 +238,8 @@ export default function Shop() {
         Réinitialiser les filtres
       </Button>
     </div>
-  );
+    );
+  };
 
   const pageTitle = searchQuery
     ? `Résultats pour "${searchQuery}"`
@@ -304,7 +283,7 @@ export default function Shop() {
       <div className="flex gap-8">
         {/* Sidebar filtres - Desktop */}
         <aside className="hidden lg:block w-64 flex-shrink-0">
-          <FilterSidebar />
+          <FilterSidebar isVisible={true} />
         </aside>
 
         {/* Zone produits */}
@@ -382,7 +361,7 @@ export default function Shop() {
                 ✕
               </button>
             </div>
-            <FilterSidebar />
+            <FilterSidebar isVisible={showFilters} />
           </div>
         </div>
       )}

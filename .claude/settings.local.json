@@ -9,7 +9,9 @@
       "WebFetch(domain:reactjs.org)",
       "WebFetch(domain:legacy.reactjs.org)",
       "Bash(ls:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(npm install:*)",
+      "Bash(npm uninstall:*)"
     ]
   }
 }

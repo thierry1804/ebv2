@@ -20,3 +20,33 @@
     overflow: hidden;
   }
 }
+
+.price-range-slider input[type="range"]::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #e74c3c;
+  cursor: grab;
+  border: 2px solid white;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  position: relative;
+  z-index: 30;
+  transition: transform 0.1s ease;
+}
+
+.price-range-slider input[type="range"]::-moz-range-thumb:active {
+  cursor: grabbing;
+  transform: scale(1.2);
+}
+
+.price-range-slider input[type="range"]::-webkit-slider-runnable-track {
+  background: transparent;
+  height: 2px;
+  cursor: pointer;
+}
+
+.price-range-slider input[type="range"]::-moz-range-track {
+  background: transparent;
+  height: 2px;
+  cursor: pointer;
+}
