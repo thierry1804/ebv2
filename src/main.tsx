@@ -14,12 +14,18 @@ function initApp() {
     return;
   }
 
+  // Désactiver StrictMode en production pour éviter les double-renders
+  // qui causent des appels multiples à onAuthStateChange et des erreurs 429
+  const isDevelopment = import.meta.env.DEV;
+
+  const app = (
+    <HelmetProvider>
+      <App />
+    </HelmetProvider>
+  );
+
   createRoot(rootElement).render(
-    <StrictMode>
-      <HelmetProvider>
-        <App />
-      </HelmetProvider>
-    </StrictMode>
+    isDevelopment ? <StrictMode>{app}</StrictMode> : app
   );
 }
 

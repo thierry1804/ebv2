@@ -21,7 +21,7 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
     // Vérifier si Supabase est correctement configuré
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
     const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
-    
+
     if (!supabaseUrl || !supabaseAnonKey || supabaseUrl.includes('placeholder')) {
       // Supabase n'est pas configuré, on passe en mode non-authentifié
       setIsLoading(false);
@@ -29,36 +29,46 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
     }
 
     let subscription: { unsubscribe: () => void } | null = null;
+    let isInitialized = false;
+    let isMounted = true; // Flag pour éviter les updates après unmount
 
-    try {
-      // Vérifier la session existante
-      supabase.auth.getSession().then(({ data: { session }, error }) => {
-        if (error) {
-          console.error('Erreur lors de la récupération de la session:', error);
-        } else {
+    const initAuth = async () => {
+      try {
+        // Récupérer la session existante une seule fois au montage
+        const { data: { session } } = await supabase.auth.getSession();
+
+        if (isMounted) {
           setAdminUser(session?.user ?? null);
+          setIsLoading(false);
+          isInitialized = true;
         }
-        setIsLoading(false);
-      }).catch((error) => {
-        console.error('Erreur lors de la récupération de la session:', error);
-        setIsLoading(false);
-      });
 
-      // Écouter les changements d'authentification
-      const {
-        data: { subscription: authSubscription },
-      } = supabase.auth.onAuthStateChange((_event, session) => {
-        setAdminUser(session?.user ?? null);
-        setIsLoading(false);
-      });
+        // S'abonner aux changements d'authentification (login, logout, token refresh)
+        const {
+          data: { subscription: authSubscription },
+        } = supabase.auth.onAuthStateChange(async (event, session) => {
+          // Ignorer l'événement INITIAL_SESSION car on a déjà la session
+          if (event === 'INITIAL_SESSION') return;
 
-      subscription = authSubscription;
-    } catch (error) {
-      console.error('Erreur lors de l\'initialisation de l\'authentification:', error);
-      setIsLoading(false);
-    }
+          // Mettre à jour uniquement si le composant est toujours monté
+          if (isMounted) {
+            setAdminUser(session?.user ?? null);
+          }
+        });
+
+        subscription = authSubscription;
+      } catch (error) {
+        console.error('Erreur lors de l\'initialisation de l\'authentification:', error);
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    initAuth();
 
     return () => {
+      isMounted = false;
       if (subscription) {
         subscription.unsubscribe();
       }
@@ -82,7 +92,27 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
       });
 
       if (error) {
-        toast.error(error.message);
+        console.error('Erreur de connexion Supabase:', {
+          message: error.message,
+          status: error.status,
+          name: error.name,
+        });
+
+        // Gérer spécifiquement les différents types d'erreurs
+        if (error.status === 429) {
+          toast.error('Trop de tentatives de connexion. Veuillez patienter quelques instants avant de réessayer.');
+        } else if (error.status === 400) {
+          // Erreur 400 peut signifier plusieurs choses
+          if (error.message?.includes('Invalid login credentials') || error.message?.includes('Invalid email or password')) {
+            toast.error('Email ou mot de passe incorrect');
+          } else if (error.message?.includes('Email not confirmed')) {
+            toast.error('Votre email n\'a pas été confirmé. Vérifiez votre boîte de réception.');
+          } else {
+            toast.error(error.message || 'Erreur de connexion. Vérifiez vos identifiants.');
+          }
+        } else {
+          toast.error(error.message || 'Erreur lors de la connexion');
+        }
         return false;
       }
 
@@ -95,9 +125,16 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
       }
 
       return false;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erreur lors de la connexion:', error);
-      toast.error('Erreur lors de la connexion');
+      // Gérer les erreurs 429 dans les exceptions
+      if (error?.status === 429 || error?.message?.includes('429')) {
+        toast.error('Trop de tentatives de connexion. Veuillez patienter quelques instants avant de réessayer.');
+      } else if (error?.status === 400) {
+        toast.error('Erreur de connexion. Vérifiez vos identifiants.');
+      } else {
+        toast.error('Erreur lors de la connexion');
+      }
       return false;
     }
   };

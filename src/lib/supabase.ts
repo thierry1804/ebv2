@@ -20,7 +20,17 @@ if (!supabaseUrl || !supabaseAnonKey) {
     'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYWNlaG9sZGVyIiwicm9sZSI6ImFub24iLCJpYXQiOjE2NDUxOTIwMDAsImV4cCI6MTk2MDc2ODAwMH0.placeholder'
   );
 } else {
-  supabase = createClient(supabaseUrl, supabaseAnonKey);
+  supabase = createClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      autoRefreshToken: true,
+      persistSession: true,
+      detectSessionInUrl: false,
+      flowType: 'pkce',
+      // Délai minimum entre les refresh (en millisecondes)
+      // Cela aide à éviter les refresh multiples simultanés
+      storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+    },
+  });
 }
 
 export { supabase };

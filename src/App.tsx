@@ -50,46 +50,46 @@ function App() {
     <BrowserRouter>
       <GoogleAnalytics />
       <AuthProvider>
-        <AdminAuthProvider>
-          <CartProvider>
-            <WishlistProvider>
-              <Suspense fallback={<LoadingFallback />}>
-                <Routes>
-                  {/* Routes publiques */}
-                  <Route
-                    path="/*"
-                    element={
-                      <Layout>
-                        <Suspense fallback={<LoadingFallback />}>
-                          <Routes>
-                            <Route path="/" element={<Home />} />
-                            <Route path="/boutique" element={<Shop />} />
-                            <Route path="/produit/:id" element={<ProductDetail />} />
-                            <Route path="/panier" element={<Cart />} />
-                            <Route path="/checkout" element={<Checkout />} />
-                            <Route path="/compte" element={<Account />} />
-                            <Route path="/connexion" element={<Login />} />
-                            <Route path="/wishlist" element={<Wishlist />} />
-                            <Route path="/blog" element={<Blog />} />
-                            <Route path="/blog/:id" element={<BlogDetail />} />
-                            <Route path="/a-propos" element={<About />} />
-                            <Route path="/contact" element={<Contact />} />
-                            <Route path="/mentions-legales" element={<Legal />} />
-                            <Route path="/cgv" element={<Legal />} />
-                            <Route path="/confidentialite" element={<Legal />} />
-                            <Route path="/retours" element={<Legal />} />
-                          </Routes>
-                        </Suspense>
-                      </Layout>
-                    }
-                  />
+        <CartProvider>
+          <WishlistProvider>
+            <Suspense fallback={<LoadingFallback />}>
+              <Routes>
+                {/* Routes publiques */}
+                <Route
+                  path="/*"
+                  element={
+                    <Layout>
+                      <Suspense fallback={<LoadingFallback />}>
+                        <Routes>
+                          <Route path="/" element={<Home />} />
+                          <Route path="/boutique" element={<Shop />} />
+                          <Route path="/produit/:id" element={<ProductDetail />} />
+                          <Route path="/panier" element={<Cart />} />
+                          <Route path="/checkout" element={<Checkout />} />
+                          <Route path="/compte" element={<Account />} />
+                          <Route path="/connexion" element={<Login />} />
+                          <Route path="/wishlist" element={<Wishlist />} />
+                          <Route path="/blog" element={<Blog />} />
+                          <Route path="/blog/:id" element={<BlogDetail />} />
+                          <Route path="/a-propos" element={<About />} />
+                          <Route path="/contact" element={<Contact />} />
+                          <Route path="/mentions-legales" element={<Legal />} />
+                          <Route path="/cgv" element={<Legal />} />
+                          <Route path="/confidentialite" element={<Legal />} />
+                          <Route path="/retours" element={<Legal />} />
+                        </Routes>
+                      </Suspense>
+                    </Layout>
+                  }
+                />
 
-                  {/* Routes admin */}
-                  <Route path="/admin/login" element={<AdminLogin />} />
-                  <Route path="/admin/signup" element={<AdminSignup />} /> {/* TEMPORAIRE - À SUPPRIMER */}
-                  <Route
-                    path="/admin/*"
-                    element={
+                {/* Routes admin - AdminAuthProvider uniquement pour les routes admin */}
+                <Route path="/admin/login" element={<AdminAuthProvider><AdminLogin /></AdminAuthProvider>} />
+                <Route path="/admin/signup" element={<AdminAuthProvider><AdminSignup /></AdminAuthProvider>} /> {/* TEMPORAIRE - À SUPPRIMER */}
+                <Route
+                  path="/admin/*"
+                  element={
+                    <AdminAuthProvider>
                       <ProtectedRoute>
                         <AdminLayout>
                           <Suspense fallback={<LoadingFallback />}>
@@ -105,13 +105,13 @@ function App() {
                           </Suspense>
                         </AdminLayout>
                       </ProtectedRoute>
-                    }
-                  />
-                </Routes>
-              </Suspense>
-            </WishlistProvider>
-          </CartProvider>
-        </AdminAuthProvider>
+                    </AdminAuthProvider>
+                  }
+                />
+              </Routes>
+            </Suspense>
+          </WishlistProvider>
+        </CartProvider>
       </AuthProvider>
     </BrowserRouter>
   );
