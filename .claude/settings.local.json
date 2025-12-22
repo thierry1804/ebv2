@@ -11,7 +11,9 @@
       "Bash(ls:*)",
       "Bash(grep:*)",
       "Bash(npm install:*)",
-      "Bash(npm uninstall:*)"
+      "Bash(npm uninstall:*)",
+      "Bash(git config:*)",
+      "Bash(git push)"
     ]
   }
 }

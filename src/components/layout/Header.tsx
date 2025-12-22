@@ -18,7 +18,7 @@ export function Header() {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [logoConfig, setLogoConfig] = useState<HeaderLogoConfig>({ text: 'ByValsue', imageUrl: null, link: '/' });
-  const [bannerConfig, setBannerConfig] = useState<PromotionalBannerConfig>({ text: 'Livraison gratuite à partir de 200 000 Ar • Retours gratuits', isVisible: true });
+  const [bannerConfig, setBannerConfig] = useState<PromotionalBannerConfig>({ text: '', isVisible: false });
   const { getTotalItems } = useCart();
   const { items: wishlistItems } = useWishlist();
   const { isAuthenticated, logout } = useAuth();
@@ -47,22 +47,22 @@ export function Header() {
 
       if (data) {
         data.forEach((config) => {
-          // Ne charger que si la section est active
-          if (!config.is_active) {
-            // Si la bannière est désactivée, la masquer
-            if (config.section_key === 'header.promotional_banner') {
-              setBannerConfig({ text: '', isVisible: false });
-            }
-            return;
-          }
-
+          // La politique RLS filtre déjà les configurations inactives
+          // Donc si on reçoit une config, elle est forcément active
           if (config.section_key === 'header.logo') {
             setLogoConfig(config.config_data as HeaderLogoConfig);
           } else if (config.section_key === 'header.promotional_banner') {
-            setBannerConfig(config.config_data as PromotionalBannerConfig);
+            // Si la bannière est dans les résultats, elle est active
+            // On utilise la config_data qui peut contenir isVisible
+            const bannerData = config.config_data as PromotionalBannerConfig;
+            setBannerConfig({
+              text: bannerData.text || '',
+              isVisible: bannerData.isVisible !== false // Par défaut visible si pas spécifié
+            });
           }
         });
       }
+      // Si la bannière n'est pas dans les résultats, elle reste masquée (valeur par défaut)
     } catch (error) {
       console.error('Erreur lors du chargement des configurations:', error);
     }
