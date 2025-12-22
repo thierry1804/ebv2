@@ -19,8 +19,9 @@ export default function AdminUsers() {
   const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
+    // Charger les utilisateurs une seule fois au montage
     loadUsers();
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadUsers = async () => {
     try {

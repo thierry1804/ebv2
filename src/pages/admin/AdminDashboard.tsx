@@ -15,12 +15,10 @@ export default function AdminDashboard() {
   const [hasErrors, setHasErrors] = useState(false);
 
   useEffect(() => {
-    if (adminUser) {
-      loadStats();
-    } else {
-      setIsLoading(false);
-    }
-  }, [adminUser]);
+    // Charger les stats une seule fois au montage
+    // Ne pas dépendre de adminUser pour éviter les rechargements inutiles
+    loadStats();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadStats = async () => {
     try {

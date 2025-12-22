@@ -7,8 +7,10 @@ import toast from 'react-hot-toast';
 import { Offcanvas } from '../../components/ui/Offcanvas';
 import { markdownToHtml } from '../../utils/markdown';
 import { convertToWebP } from '../../utils/imageUtils';
+import { useAdminAuth } from '../../context/AdminAuthContext';
 
 export default function AdminArticles() {
+  const { adminUser } = useAdminAuth();
   const [articles, setArticles] = useState<DatabaseBlogPost[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -27,8 +29,9 @@ export default function AdminArticles() {
   });
 
   useEffect(() => {
+    // Charger les articles une seule fois au montage
     loadArticles();
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadArticles = async () => {
     try {
@@ -167,8 +170,7 @@ export default function AdminArticles() {
 
     setUploadingImage(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
+      if (!adminUser) {
         toast.error('Vous devez être connecté');
         setUploadingImage(false);
         return;

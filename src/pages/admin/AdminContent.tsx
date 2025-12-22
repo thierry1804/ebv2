@@ -5,8 +5,10 @@ import { Plus, Edit, Trash2, Save } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import toast from 'react-hot-toast';
 import { Modal } from '../../components/ui/Modal';
+import { useAdminAuth } from '../../context/AdminAuthContext';
 
 export default function AdminContent() {
+  const { adminUser } = useAdminAuth();
   const [contents, setContents] = useState<SiteContent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -67,8 +69,7 @@ export default function AdminContent() {
 
   const handleSave = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
+      if (!adminUser) {
         toast.error('Vous devez être connecté');
         return;
       }
@@ -79,7 +80,7 @@ export default function AdminContent() {
         content: formData.content,
         type: formData.type,
         updated_at: new Date().toISOString(),
-        updated_by: user.id,
+        updated_by: adminUser.id,
       };
 
       if (editingContent) {

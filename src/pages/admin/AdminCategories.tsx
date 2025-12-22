@@ -6,6 +6,7 @@ import { Button } from '../../components/ui/Button';
 import { Offcanvas } from '../../components/ui/Offcanvas';
 import toast from 'react-hot-toast';
 import { convertToWebP } from '../../utils/imageUtils';
+import { useAdminAuth } from '../../context/AdminAuthContext';
 
 interface DatabaseCategory {
   id: string;
@@ -20,6 +21,7 @@ interface DatabaseCategory {
 }
 
 export default function AdminCategories() {
+  const { adminUser } = useAdminAuth();
   const [categories, setCategories] = useState<Category[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isOffcanvasOpen, setIsOffcanvasOpen] = useState(false);
@@ -125,8 +127,7 @@ export default function AdminCategories() {
 
     setIsUploading(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
+      if (!adminUser) {
         toast.error('Vous devez être connecté');
         setIsUploading(false);
         return;
@@ -234,8 +235,7 @@ export default function AdminCategories() {
 
   const handleSave = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
+      if (!adminUser) {
         toast.error('Vous devez être connecté');
         return;
       }

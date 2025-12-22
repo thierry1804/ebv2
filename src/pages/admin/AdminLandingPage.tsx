@@ -6,8 +6,10 @@ import { Button } from '../../components/ui/Button';
 import { Modal } from '../../components/ui/Modal';
 import toast from 'react-hot-toast';
 import { convertToWebP } from '../../utils/imageUtils';
+import { useAdminAuth } from '../../context/AdminAuthContext';
 
 export default function AdminLandingPage() {
+  const { adminUser } = useAdminAuth();
   const [configs, setConfigs] = useState<LandingPageConfig[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [editingKey, setEditingKey] = useState<string | null>(null);
@@ -45,8 +47,7 @@ export default function AdminLandingPage() {
 
   const handleSave = async (sectionKey: string) => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
+      if (!adminUser) {
         toast.error('Vous devez être connecté');
         return;
       }
@@ -55,7 +56,7 @@ export default function AdminLandingPage() {
         .from('landing_page_config')
         .update({
           config_data: formData,
-          updated_by: user.id,
+          updated_by: adminUser.id,
         })
         .eq('section_key', sectionKey);
 
@@ -98,8 +99,7 @@ export default function AdminLandingPage() {
 
     setUploadingSlides((prev) => new Set(prev).add(slideIndex));
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
+      if (!adminUser) {
         toast.error('Vous devez être connecté');
         setUploadingSlides((prev) => {
           const newSet = new Set(prev);
@@ -177,8 +177,7 @@ export default function AdminLandingPage() {
     try {
       setUploadingFeaturedImage(true);
 
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
+      if (!adminUser) {
         toast.error('Vous devez être connecté');
         setUploadingFeaturedImage(false);
         return;

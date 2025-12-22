@@ -9,8 +9,10 @@ import { Modal } from '../../components/ui/Modal';
 import { useCategories } from '../../hooks/useCategories';
 import { predefinedColors as sharedPredefinedColors } from '../../config/colors';
 import { convertToWebP } from '../../utils/imageUtils';
+import { useAdminAuth } from '../../context/AdminAuthContext';
 
 export default function AdminProducts() {
+  const { adminUser } = useAdminAuth();
   const { categories } = useCategories();
   const [products, setProducts] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -52,8 +54,9 @@ export default function AdminProducts() {
   };
 
   useEffect(() => {
+    // Charger les produits une seule fois au montage
     loadProducts();
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadProducts = async () => {
     try {
@@ -288,8 +291,7 @@ export default function AdminProducts() {
     }
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
+      if (!adminUser) {
         toast.error('Vous devez être connecté');
         return null;
       }
