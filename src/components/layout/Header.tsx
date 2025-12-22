@@ -47,13 +47,20 @@ export function Header() {
 
       if (data) {
         data.forEach((config) => {
-          // La politique RLS filtre déjà les configurations inactives
-          // Donc si on reçoit une config, elle est forcément active
+          // Vérifier explicitement is_active car les utilisateurs authentifiés
+          // peuvent avoir accès à toutes les configs via RLS
+          if (!config.is_active) {
+            // Si la bannière est désactivée, la masquer
+            if (config.section_key === 'header.promotional_banner') {
+              setBannerConfig({ text: '', isVisible: false });
+            }
+            return;
+          }
+
           if (config.section_key === 'header.logo') {
             setLogoConfig(config.config_data as HeaderLogoConfig);
           } else if (config.section_key === 'header.promotional_banner') {
-            // Si la bannière est dans les résultats, elle est active
-            // On utilise la config_data qui peut contenir isVisible
+            // La bannière est active, utiliser la config_data
             const bannerData = config.config_data as PromotionalBannerConfig;
             setBannerConfig({
               text: bannerData.text || '',
