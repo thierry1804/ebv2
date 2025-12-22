@@ -9,6 +9,7 @@ import { Button } from '../components/ui/Button';
 import { ProductCard } from '../components/product/ProductCard';
 import { ReviewForm } from '../components/product/ReviewForm';
 import { ReviewList } from '../components/product/ReviewList';
+import { SocialShare } from '../components/product/SocialShare';
 import { useCart } from '../context/CartContext';
 import { useWishlist } from '../context/WishlistContext';
 import { formatPrice } from '../utils/formatters';
@@ -265,6 +266,14 @@ export default function ProductDetail() {
               <span className="text-red-600">Rupture de stock</span>
             )}
           </p>
+
+          {/* Partage réseaux sociaux */}
+          <SocialShare
+            productName={product.name}
+            productUrl={`/produit/${product.id}`}
+            productImage={product.images && product.images.length > 0 ? product.images[0] : undefined}
+            productDescription={product.description}
+          />
 
           {/* Onglets */}
           <div className="border-t border-neutral-support pt-6">
