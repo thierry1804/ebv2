@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { Button } from '../components/ui/Button';
 import { Mail, Phone, MapPin, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import emailjs from '@emailjs/browser';
 import { SEO } from '../components/seo/SEO';
 
 export default function Contact() {
@@ -13,11 +12,6 @@ export default function Contact() {
   });
   const [isLoading, setIsLoading] = useState(false);
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
-
-  // Configuration EmailJS - À configurer dans les variables d'environnement
-  const EMAILJS_SERVICE_ID = import.meta.env.VITE_EMAILJS_SERVICE_ID || '';
-  const EMAILJS_TEMPLATE_ID = import.meta.env.VITE_EMAILJS_TEMPLATE_ID || '';
-  const EMAILJS_PUBLIC_KEY = import.meta.env.VITE_EMAILJS_PUBLIC_KEY || '';
 
   const validateForm = () => {
     const newErrors: { [key: string]: string } = {};
@@ -50,53 +44,37 @@ export default function Contact() {
       return;
     }
 
-    // Vérifier si EmailJS est configuré
-    if (!EMAILJS_SERVICE_ID || !EMAILJS_TEMPLATE_ID || !EMAILJS_PUBLIC_KEY) {
-      toast.error(
-        'Configuration EmailJS manquante. Veuillez configurer les variables d\'environnement.',
-        { duration: 5000 }
-      );
-      console.error('EmailJS configuration manquante. Variables requises:');
-      console.error('- VITE_EMAILJS_SERVICE_ID');
-      console.error('- VITE_EMAILJS_TEMPLATE_ID');
-      console.error('- VITE_EMAILJS_PUBLIC_KEY');
-      return;
-    }
-
     setIsLoading(true);
 
     try {
-      // Initialiser EmailJS avec la clé publique
-      emailjs.init(EMAILJS_PUBLIC_KEY);
+      const response = await fetch('https://api.eshopbyvalsue.mg/api/mail/contact', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: formData.email,
+          message: `<strong>${formData.name}</strong><br><br>${formData.message}`,
+        }),
+      });
 
-      // Envoyer l'email
-      const result = await emailjs.send(
-        EMAILJS_SERVICE_ID,
-        EMAILJS_TEMPLATE_ID,
-        {
-          from_name: formData.name,
-          from_email: formData.email,
-          message: formData.message,
-          to_email: 'contact@eshopbyvalsue.mg',
-        }
-      );
-
-      if (result.status === 200) {
-        toast.success('Message envoyé avec succès ! Nous vous répondrons dans les plus brefs délais.');
-        // Réinitialiser le formulaire
-        setFormData({
-          name: '',
-          email: '',
-          message: '',
-        });
-        setErrors({});
-      } else {
-        throw new Error('Erreur lors de l\'envoi');
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText || 'Erreur lors de l\'envoi du message');
       }
+
+      toast.success('Message envoyé avec succès ! Nous vous répondrons dans les plus brefs délais.');
+      // Réinitialiser le formulaire
+      setFormData({
+        name: '',
+        email: '',
+        message: '',
+      });
+      setErrors({});
     } catch (error: any) {
       console.error('Erreur lors de l\'envoi de l\'email:', error);
       toast.error(
-        error.text || 'Une erreur est survenue lors de l\'envoi du message. Veuillez réessayer.'
+        error.message || 'Une erreur est survenue lors de l\'envoi du message. Veuillez réessayer.'
       );
     } finally {
       setIsLoading(false);
