@@ -143,7 +143,7 @@ export default function ProductDetail() {
         Retour
       </button>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 mb-16">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 mb-1">
         {/* Galerie */}
         <div>
           <ProductGallery images={product.images} productName={product.name} />
@@ -226,6 +226,7 @@ export default function ProductDetail() {
               onIncrease={() => setQuantity((q) => q + 1)}
               onDecrease={() => setQuantity((q) => Math.max(1, q - 1))}
               max={product.stock}
+              stockStatus={product.stock > 0 ? 'in_stock' : 'out_of_stock'}
             />
           </div>
 
@@ -257,128 +258,121 @@ export default function ProductDetail() {
               <Heart size={24} fill={inWishlist ? 'currentColor' : 'none'} />
             </button>
           </div>
+        </div>
+      </div>
 
-          {/* Stock */}
-          <p className="text-sm text-text-dark/80 mb-8">
-            {product.stock > 0 ? (
-              <span className="text-green-600">En stock</span>
-            ) : (
-              <span className="text-red-600">Rupture de stock</span>
-            )}
-          </p>
+      {/* Partage réseaux sociaux */}
+      <div className="mb-8">
+        <SocialShare
+          productName={product.name}
+          productUrl={`/produit/${product.id}`}
+          productImage={product.images && product.images.length > 0 ? product.images[0] : undefined}
+          productDescription={product.description}
+        />
+      </div>
 
-          {/* Partage réseaux sociaux */}
-          <SocialShare
-            productName={product.name}
-            productUrl={`/produit/${product.id}`}
-            productImage={product.images && product.images.length > 0 ? product.images[0] : undefined}
-            productDescription={product.description}
-          />
+      {/* Onglets */}
+      <div className="border-t border-neutral-support pt-6">
+        <div className="flex gap-4 mb-6 border-b border-neutral-support">
+          {[
+            { id: 'description', label: 'Description' },
+            { id: 'composition', label: 'Composition & Entretien' },
+            { id: 'sizes', label: 'Guide tailles' },
+            { id: 'shipping', label: 'Livraison & Retours' },
+            { id: 'reviews', label: 'Avis' },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id as any)}
+              className={`pb-3 px-2 font-medium transition-colors ${
+                activeTab === tab.id
+                  ? 'text-secondary border-b-2 border-secondary'
+                  : 'text-text-dark/80 hover:text-secondary'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
 
-          {/* Onglets */}
-          <div className="border-t border-neutral-support pt-6">
-            <div className="flex gap-4 mb-6 border-b border-neutral-support">
-              {[
-                { id: 'description', label: 'Description' },
-                { id: 'composition', label: 'Composition & Entretien' },
-                { id: 'sizes', label: 'Guide tailles' },
-                { id: 'shipping', label: 'Livraison & Retours' },
-                { id: 'reviews', label: 'Avis' },
-              ].map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id as any)}
-                  className={`pb-3 px-2 font-medium transition-colors ${
-                    activeTab === tab.id
-                      ? 'text-secondary border-b-2 border-secondary'
-                      : 'text-text-dark/80 hover:text-secondary'
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              ))}
+        <div className="text-text-dark/80">
+          {activeTab === 'description' && (
+            <div>
+              <p className="mb-4">{product.description}</p>
             </div>
-
-            <div className="text-text-dark/80">
-              {activeTab === 'description' && (
-                <div>
-                  <p className="mb-4">{product.description}</p>
-                </div>
-              )}
-              {activeTab === 'composition' && (
-                <div>
-                  <p className="mb-2">
-                    <strong>Composition :</strong> {product.composition}
-                  </p>
-                  <p>
-                    <strong>Entretien :</strong> Lavage à la main recommandé. Ne pas utiliser de
-                    javel. Repasser à basse température.
-                  </p>
-                </div>
-              )}
-              {activeTab === 'sizes' && (
-                <div>
-                  <p className="mb-4">
-                    <strong>Guide des tailles :</strong>
-                  </p>
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-neutral-support">
-                        <th className="text-left py-2">Taille</th>
-                        <th className="text-left py-2">Tour de poitrine</th>
-                        <th className="text-left py-2">Tour de taille</th>
-                        <th className="text-left py-2">Tour de hanches</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {['XS', 'S', 'M', 'L', 'XL'].map((size) => (
-                        <tr key={size} className="border-b border-neutral-support/50">
-                          <td className="py-2 font-medium">{size}</td>
-                          <td className="py-2">80-84 cm</td>
-                          <td className="py-2">60-64 cm</td>
-                          <td className="py-2">88-92 cm</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-              {activeTab === 'shipping' && (
-                <div>
-                  <p className="mb-4">
-                    <strong>Livraison :</strong>
-                  </p>
-                  <ul className="list-disc list-inside space-y-2 mb-6">
-                    <li>Livraison gratuite à partir de 200 000 Ar</li>
-                    <li>Délai de livraison : 3-5 jours ouvrés</li>
-                    <li>Livraison disponible dans toute l'île de Madagascar</li>
-                  </ul>
-                  <p className="mb-4">
-                    <strong>Retours :</strong>
-                  </p>
-                  <ul className="list-disc list-inside space-y-2">
-                    <li>Retours gratuits sous 14 jours</li>
-                    <li>Articles non portés, avec étiquettes</li>
-                    <li>Remboursement ou échange possible</li>
-                  </ul>
-                </div>
-              )}
-              {activeTab === 'reviews' && (
-                <div className="space-y-8">
-                  <ReviewForm
-                    productId={product.id}
-                    onReviewSubmitted={async () => {
-                      // Rafraîchir les produits pour mettre à jour les notes
-                      await reloadProducts();
-                      // Forcer le rechargement de la liste des avis
-                      setReviewsKey((prev) => prev + 1);
-                    }}
-                  />
-                  <ReviewList productId={product.id} refreshKey={reviewsKey} />
-                </div>
-              )}
+          )}
+          {activeTab === 'composition' && (
+            <div>
+              <p className="mb-2">
+                <strong>Composition :</strong> {product.composition}
+              </p>
+              <p>
+                <strong>Entretien :</strong> Lavage à la main recommandé. Ne pas utiliser de
+                javel. Repasser à basse température.
+              </p>
             </div>
-          </div>
+          )}
+          {activeTab === 'sizes' && (
+            <div>
+              <p className="mb-4">
+                <strong>Guide des tailles :</strong>
+              </p>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-neutral-support">
+                    <th className="text-left py-2">Taille</th>
+                    <th className="text-left py-2">Tour de poitrine</th>
+                    <th className="text-left py-2">Tour de taille</th>
+                    <th className="text-left py-2">Tour de hanches</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {['XS', 'S', 'M', 'L', 'XL'].map((size) => (
+                    <tr key={size} className="border-b border-neutral-support/50">
+                      <td className="py-2 font-medium">{size}</td>
+                      <td className="py-2">80-84 cm</td>
+                      <td className="py-2">60-64 cm</td>
+                      <td className="py-2">88-92 cm</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {activeTab === 'shipping' && (
+            <div>
+              <p className="mb-4">
+                <strong>Livraison :</strong>
+              </p>
+              <ul className="list-disc list-inside space-y-2 mb-6">
+                <li>Livraison gratuite à partir de 200 000 Ar</li>
+                <li>Délai de livraison : 3-5 jours ouvrés</li>
+                <li>Livraison disponible dans toute l'île de Madagascar</li>
+              </ul>
+              <p className="mb-4">
+                <strong>Retours :</strong>
+              </p>
+              <ul className="list-disc list-inside space-y-2">
+                <li>Retours gratuits sous 14 jours</li>
+                <li>Articles non portés, avec étiquettes</li>
+                <li>Remboursement ou échange possible</li>
+              </ul>
+            </div>
+          )}
+          {activeTab === 'reviews' && (
+            <div className="space-y-8">
+              <ReviewForm
+                productId={product.id}
+                onReviewSubmitted={async () => {
+                  // Rafraîchir les produits pour mettre à jour les notes
+                  await reloadProducts();
+                  // Forcer le rechargement de la liste des avis
+                  setReviewsKey((prev) => prev + 1);
+                }}
+              />
+              <ReviewList productId={product.id} refreshKey={reviewsKey} />
+            </div>
+          )}
         </div>
       </div>
 

@@ -6,6 +6,7 @@ interface QuantitySelectorProps {
   onDecrease: () => void;
   min?: number;
   max?: number;
+  stockStatus?: 'in_stock' | 'out_of_stock';
 }
 
 export function QuantitySelector({
@@ -14,10 +15,18 @@ export function QuantitySelector({
   onDecrease,
   min = 1,
   max = 99,
+  stockStatus,
 }: QuantitySelectorProps) {
   return (
     <div>
-      <label className="block text-sm font-medium text-text-dark mb-2">Quantité</label>
+      <label className="block text-sm font-medium text-text-dark mb-2">
+        Quantité
+        {stockStatus && (
+          <span className={stockStatus === 'in_stock' ? 'text-green-600' : 'text-red-600'}>
+            {' '}({stockStatus === 'in_stock' ? 'En stock' : 'Rupture de stock'})
+          </span>
+        )}
+      </label>
       <div className="flex items-center gap-3">
         <button
           onClick={onDecrease}
