@@ -54,7 +54,7 @@ export default function Contact() {
         },
         body: JSON.stringify({
           email: formData.email,
-          message: "<strong>${formData.name}</strong><br><br>${formData.message}",
+          message: `${formData.name}\n\n${formData.message}`,
         }),
       });
 
