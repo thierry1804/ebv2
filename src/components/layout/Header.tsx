@@ -116,7 +116,7 @@ export function Header() {
             <div className="hidden lg:flex items-center gap-8">
               <Link
                 to="/"
-                className="text-text-dark hover:text-secondary transition-colors font-semibold drop-shadow-sm"
+                className="text-text-dark hover:text-secondary transition-colors font-semibold drop-shadow-sm focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-offset-2 rounded px-2 py-1"
               >
                 Accueil
               </Link>
@@ -124,12 +124,21 @@ export function Header() {
                 className="relative"
                 onMouseEnter={() => setIsMegaMenuOpen(true)}
                 onMouseLeave={() => setIsMegaMenuOpen(false)}
+                onFocus={() => setIsMegaMenuOpen(true)}
+                onBlur={(e) => {
+                  // Ne fermer que si le focus sort complètement du menu
+                  if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                    setIsMegaMenuOpen(false);
+                  }
+                }}
               >
                 <Link
                   to="/boutique"
-                  className={`text-text-dark hover:text-secondary transition-colors font-semibold drop-shadow-sm ${
+                  className={`text-text-dark hover:text-secondary transition-colors font-semibold drop-shadow-sm focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-offset-2 rounded px-2 py-1 ${
                     isMegaMenuOpen ? 'text-secondary' : ''
                   }`}
+                  aria-expanded={isMegaMenuOpen}
+                  aria-haspopup="true"
                 >
                   Boutique
                 </Link>
@@ -190,25 +199,25 @@ export function Header() {
               </div>
               <Link
                 to="/boutique?filter=new"
-                className="text-text-dark hover:text-secondary transition-colors font-semibold drop-shadow-sm"
+                className="text-text-dark hover:text-secondary transition-colors font-semibold drop-shadow-sm focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-offset-2 rounded px-2 py-1"
               >
                 Nouveautés
               </Link>
               <Link
                 to="/boutique?filter=sale"
-                className="text-text-dark hover:text-secondary transition-colors font-semibold drop-shadow-sm"
+                className="text-text-dark hover:text-secondary transition-colors font-semibold drop-shadow-sm focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-offset-2 rounded px-2 py-1"
               >
                 Soldes
               </Link>
               <Link
                 to="/blog"
-                className="text-text-dark hover:text-secondary transition-colors font-semibold drop-shadow-sm"
+                className="text-text-dark hover:text-secondary transition-colors font-semibold drop-shadow-sm focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-offset-2 rounded px-2 py-1"
               >
                 Blog
               </Link>
               <Link
                 to="/contact"
-                className="text-text-dark hover:text-secondary transition-colors font-semibold drop-shadow-sm"
+                className="text-text-dark hover:text-secondary transition-colors font-semibold drop-shadow-sm focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-offset-2 rounded px-2 py-1"
               >
                 Contact
               </Link>
@@ -218,28 +227,30 @@ export function Header() {
             <div className="flex items-center gap-4">
               <button
                 onClick={() => setIsSearchOpen(true)}
-                className="text-text-dark hover:text-secondary transition-colors drop-shadow-sm"
-                aria-label="Rechercher"
+                className="text-text-dark hover:text-secondary transition-colors drop-shadow-sm p-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-offset-2 min-w-[44px] min-h-[44px] flex items-center justify-center"
+                aria-label="Rechercher un produit"
+                aria-expanded={isSearchOpen}
               >
                 <Search size={22} />
               </button>
               <Link
                 to={isAuthenticated ? '/compte' : '/connexion'}
-                className="text-text-dark hover:text-secondary transition-colors drop-shadow-sm"
-                aria-label="Compte"
+                className="text-text-dark hover:text-secondary transition-colors drop-shadow-sm p-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-offset-2 min-w-[44px] min-h-[44px] flex items-center justify-center"
+                aria-label={isAuthenticated ? 'Mon compte' : 'Se connecter'}
               >
                 <User size={22} />
               </Link>
               <Link
                 to="/wishlist"
-                className="text-text-dark hover:text-secondary transition-colors relative drop-shadow-sm"
-                aria-label="Wishlist"
+                className="text-text-dark hover:text-secondary transition-colors relative drop-shadow-sm p-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-offset-2 min-w-[44px] min-h-[44px] flex items-center justify-center"
+                aria-label={`Wishlist${wishlistCount > 0 ? `, ${wishlistCount} article${wishlistCount > 1 ? 's' : ''}` : ''}`}
               >
                 <Heart size={22} />
                 {wishlistCount > 0 && (
                   <Badge
                     variant="accent"
                     className="absolute -top-2 -right-2 text-[10px] min-w-[18px] h-[18px] p-0"
+                    aria-hidden="true"
                   >
                     {wishlistCount}
                   </Badge>
@@ -247,14 +258,15 @@ export function Header() {
               </Link>
               <Link
                 to="/panier"
-                className="text-text-dark hover:text-secondary transition-colors relative drop-shadow-sm"
-                aria-label="Panier"
+                className="text-text-dark hover:text-secondary transition-colors relative drop-shadow-sm p-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-offset-2 min-w-[44px] min-h-[44px] flex items-center justify-center"
+                aria-label={`Panier${cartItemsCount > 0 ? `, ${cartItemsCount} article${cartItemsCount > 1 ? 's' : ''}` : ''}`}
               >
                 <ShoppingCart size={22} />
                 {cartItemsCount > 0 && (
                   <Badge
                     variant="accent"
                     className="absolute -top-2 -right-2 text-[10px] min-w-[18px] h-[18px] p-0"
+                    aria-hidden="true"
                   >
                     {cartItemsCount}
                   </Badge>
@@ -262,8 +274,10 @@ export function Header() {
               </Link>
               <button
                 onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                className="lg:hidden text-text-dark hover:text-secondary transition-colors drop-shadow-sm"
-                aria-label="Menu"
+                className="lg:hidden text-text-dark hover:text-secondary transition-colors drop-shadow-sm p-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-offset-2 min-w-[44px] min-h-[44px] flex items-center justify-center"
+                aria-label="Menu de navigation"
+                aria-expanded={isMobileMenuOpen}
+                aria-controls="mobile-menu"
               >
                 {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
               </button>
@@ -272,48 +286,62 @@ export function Header() {
         </nav>
 
         {/* Menu mobile */}
-        {isMobileMenuOpen && (
-          <div className="lg:hidden border-t border-neutral-support bg-white/95 backdrop-blur-md">
-            <div className="container mx-auto px-4 py-4 space-y-3">
+        <div 
+          id="mobile-menu" 
+          className={`lg:hidden border-t border-neutral-support bg-white/95 backdrop-blur-md transition-all duration-300 ease-in-out ${
+            isMobileMenuOpen 
+              ? 'max-h-screen opacity-100' 
+              : 'max-h-0 opacity-0 overflow-hidden'
+          }`}
+          role="menu" 
+          aria-label="Menu de navigation"
+        >
+          <div className="container mx-auto px-4 py-4 space-y-3">
               <Link
                 to="/"
-                className="block py-2 text-text-dark hover:text-secondary transition-colors"
+                className="block py-3 px-2 text-text-dark hover:text-secondary hover:bg-primary/10 rounded-lg transition-colors min-h-[44px] flex items-center focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-offset-2"
                 onClick={() => setIsMobileMenuOpen(false)}
+                role="menuitem"
               >
                 Accueil
               </Link>
               <Link
                 to="/boutique"
-                className="block py-2 text-text-dark hover:text-secondary transition-colors"
+                className="block py-3 px-2 text-text-dark hover:text-secondary hover:bg-primary/10 rounded-lg transition-colors min-h-[44px] flex items-center focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-offset-2"
                 onClick={() => setIsMobileMenuOpen(false)}
+                role="menuitem"
               >
                 Boutique
               </Link>
               <Link
                 to="/boutique?filter=new"
-                className="block py-2 text-text-dark hover:text-secondary transition-colors"
+                className="block py-3 px-2 text-text-dark hover:text-secondary hover:bg-primary/10 rounded-lg transition-colors min-h-[44px] flex items-center focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-offset-2"
                 onClick={() => setIsMobileMenuOpen(false)}
+                role="menuitem"
               >
                 Nouveautés
               </Link>
               <Link
                 to="/boutique?filter=sale"
-                className="block py-2 text-text-dark hover:text-secondary transition-colors"
+                className="block py-3 px-2 text-text-dark hover:text-secondary hover:bg-primary/10 rounded-lg transition-colors min-h-[44px] flex items-center focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-offset-2"
                 onClick={() => setIsMobileMenuOpen(false)}
+                role="menuitem"
               >
                 Soldes
               </Link>
               <Link
                 to="/blog"
-                className="block py-2 text-text-dark hover:text-secondary transition-colors"
+                className="block py-3 px-2 text-text-dark hover:text-secondary hover:bg-primary/10 rounded-lg transition-colors min-h-[44px] flex items-center focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-offset-2"
                 onClick={() => setIsMobileMenuOpen(false)}
+                role="menuitem"
               >
                 Blog
               </Link>
               <Link
                 to="/contact"
-                className="block py-2 text-text-dark hover:text-secondary transition-colors"
+                className="block py-3 px-2 text-text-dark hover:text-secondary hover:bg-primary/10 rounded-lg transition-colors min-h-[44px] flex items-center focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-offset-2"
                 onClick={() => setIsMobileMenuOpen(false)}
+                role="menuitem"
               >
                 Contact
               </Link>
@@ -321,8 +349,9 @@ export function Header() {
                 <>
                   <Link
                     to="/compte"
-                    className="block py-2 text-text-dark hover:text-secondary transition-colors"
+                    className="block py-3 px-2 text-text-dark hover:text-secondary hover:bg-primary/10 rounded-lg transition-colors min-h-[44px] flex items-center focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-offset-2"
                     onClick={() => setIsMobileMenuOpen(false)}
+                    role="menuitem"
                   >
                     Mon compte
                   </Link>
@@ -331,7 +360,8 @@ export function Header() {
                       logout();
                       setIsMobileMenuOpen(false);
                     }}
-                    className="block py-2 text-text-dark hover:text-secondary transition-colors w-full text-left"
+                    className="block py-3 px-2 text-text-dark hover:text-secondary hover:bg-primary/10 rounded-lg transition-colors w-full text-left min-h-[44px] flex items-center focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-offset-2"
+                    role="menuitem"
                   >
                     Déconnexion
                   </button>
@@ -339,7 +369,6 @@ export function Header() {
               )}
             </div>
           </div>
-        )}
       </header>
 
       {/* Modal recherche */}

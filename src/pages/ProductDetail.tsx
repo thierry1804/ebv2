@@ -203,18 +203,32 @@ export default function ProductDetail() {
           {/* Sélecteurs */}
           <div className="space-y-6 mb-8">
             {product.sizes && product.sizes.length > 0 && (
-              <SizeSelector
-                sizes={product.sizes}
-                selectedSize={selectedSize}
-                onSelectSize={setSelectedSize}
-              />
+              <div>
+                <SizeSelector
+                  sizes={product.sizes}
+                  selectedSize={selectedSize}
+                  onSelectSize={setSelectedSize}
+                />
+                {selectedSize && (
+                  <p className="mt-2 text-sm text-green-600 font-medium">
+                    ✓ Taille {selectedSize} sélectionnée
+                  </p>
+                )}
+              </div>
             )}
             {product.colors && product.colors.length > 0 && (
-              <ColorSelector
-                colors={product.colors}
-                selectedColor={selectedColor}
-                onSelectColor={setSelectedColor}
-              />
+              <div>
+                <ColorSelector
+                  colors={product.colors}
+                  selectedColor={selectedColor}
+                  onSelectColor={setSelectedColor}
+                />
+                {selectedColor && (
+                  <p className="mt-2 text-sm text-green-600 font-medium">
+                    ✓ Couleur {selectedColor} sélectionnée
+                  </p>
+                )}
+              </div>
             )}
             {(product.sizes && product.sizes.length > 0) || (product.colors && product.colors.length > 0) ? (
               <p className="text-sm text-text-dark/60 italic">
@@ -228,6 +242,20 @@ export default function ProductDetail() {
               max={product.stock}
               stockStatus={product.stock > 0 ? 'in_stock' : 'out_of_stock'}
             />
+            {product.stock > 0 && product.stock <= 5 && (
+              <div className="mt-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <p className="text-sm text-yellow-800 font-medium">
+                  ⚠️ Attention : Il ne reste que {product.stock} exemplaire{product.stock > 1 ? 's' : ''} en stock !
+                </p>
+              </div>
+            )}
+            {product.stock === 0 && (
+              <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+                <p className="text-sm text-red-800 font-medium">
+                  ❌ Ce produit est actuellement en rupture de stock.
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Actions */}

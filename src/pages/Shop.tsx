@@ -1,16 +1,19 @@
-import { useState, useMemo } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useState, useMemo, useEffect } from 'react';
+import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import { ProductCard } from '../components/product/ProductCard';
 import { Button } from '../components/ui/Button';
 import { useCategories } from '../hooks/useCategories';
 import { useProducts } from '../hooks/useProducts';
 import { SEO } from '../components/seo/SEO';
 import { normalizeColors, ColorWithHex } from '../config/colors';
+import toast from 'react-hot-toast';
+import { X } from 'lucide-react';
 
 export default function Shop() {
   const { categories } = useCategories();
   const { products } = useProducts();
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const [showFilters, setShowFilters] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState(
     searchParams.get('category') || 'all'
@@ -18,6 +21,8 @@ export default function Shop() {
   const [selectedSizes, setSelectedSizes] = useState<string[]>([]);
   const [selectedColors, setSelectedColors] = useState<string[]>([]);
   const [sortBy, setSortBy] = useState('relevance');
+  const [currentPage, setCurrentPage] = useState(1);
+  const productsPerPage = 12;
   const searchQuery = searchParams.get('search') || '';
   const filterNew = searchParams.get('filter') === 'new';
   const filterSale = searchParams.get('filter') === 'sale';
@@ -109,6 +114,17 @@ export default function Shop() {
     sortBy,
   ]);
 
+  // Pagination
+  const totalPages = Math.ceil(filteredProducts.length / productsPerPage);
+  const startIndex = (currentPage - 1) * productsPerPage;
+  const endIndex = startIndex + productsPerPage;
+  const paginatedProducts = filteredProducts.slice(startIndex, endIndex);
+
+  // Réinitialiser la page quand les filtres changent
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedCategory, selectedSizes, selectedColors, filterNew, filterSale, searchQuery, sortBy]);
+
   const allSizes = Array.from(new Set(products.flatMap((p) => p.sizes))).sort();
   // Extraire les couleurs avec leur hex (gérer les deux formats : string[] ou ColorWithHex[])
   const allColorsWithHex = useMemo(() => {
@@ -143,7 +159,10 @@ export default function Shop() {
     setSelectedSizes([]);
     setSelectedColors([]);
     setSortBy('relevance');
+    toast.success('Filtres réinitialisés');
   };
+
+  const hasActiveFilters = selectedCategory !== 'all' || selectedSizes.length > 0 || selectedColors.length > 0 || filterNew || filterSale;
 
 
   const FilterSidebar = () => {
@@ -268,11 +287,13 @@ export default function Shop() {
       />
       <div className="container mx-auto px-4 py-8">
         {/* Breadcrumbs */}
-      <div className="mb-6 text-sm text-text-dark/80">
-        <span>Accueil</span>
+      <nav className="mb-6 text-sm text-text-dark/80" aria-label="Fil d'Ariane">
+        <Link to="/" className="hover:text-secondary transition-colors">
+          Accueil
+        </Link>
         <span className="mx-2">/</span>
         <span className="text-text-dark font-medium">Boutique</span>
-      </div>
+      </nav>
 
       <div className="flex gap-8">
         {/* Sidebar filtres - Desktop */}
@@ -284,7 +305,7 @@ export default function Shop() {
         <div className="flex-1">
           {/* En-tête avec tri et compteur */}
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-            <div>
+            <div className="flex-1">
               <h1 className="text-3xl font-heading font-bold text-text-dark mb-2">
                 {searchQuery
                   ? `Résultats pour "${searchQuery}"`
@@ -298,11 +319,78 @@ export default function Shop() {
                 {filteredProducts.length} produit{filteredProducts.length > 1 ? 's' : ''} trouvé
                 {filteredProducts.length > 1 ? 's' : ''}
               </p>
+              
+              {/* Filtres actifs */}
+              {hasActiveFilters && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {filterNew && (
+                    <span className="inline-flex items-center gap-1 px-3 py-1 bg-secondary/10 text-secondary rounded-full text-sm font-medium">
+                      Nouveautés
+                      <button
+                        onClick={() => navigate('/boutique')}
+                        className="ml-1 hover:bg-secondary/20 rounded-full p-0.5 focus:outline-none focus:ring-2 focus:ring-secondary"
+                        aria-label="Retirer le filtre nouveautés"
+                      >
+                        <X size={14} />
+                      </button>
+                    </span>
+                  )}
+                  {filterSale && (
+                    <span className="inline-flex items-center gap-1 px-3 py-1 bg-secondary/10 text-secondary rounded-full text-sm font-medium">
+                      Soldes
+                      <button
+                        onClick={() => navigate('/boutique')}
+                        className="ml-1 hover:bg-secondary/20 rounded-full p-0.5 focus:outline-none focus:ring-2 focus:ring-secondary"
+                        aria-label="Retirer le filtre soldes"
+                      >
+                        <X size={14} />
+                      </button>
+                    </span>
+                  )}
+                  {selectedCategory !== 'all' && (
+                    <span className="inline-flex items-center gap-1 px-3 py-1 bg-secondary/10 text-secondary rounded-full text-sm font-medium">
+                      {categories.find(c => c.slug === selectedCategory)?.name || selectedCategory}
+                      <button
+                        onClick={() => setSelectedCategory('all')}
+                        className="ml-1 hover:bg-secondary/20 rounded-full p-0.5 focus:outline-none focus:ring-2 focus:ring-secondary"
+                        aria-label="Retirer le filtre catégorie"
+                      >
+                        <X size={14} />
+                      </button>
+                    </span>
+                  )}
+                  {selectedSizes.map(size => (
+                    <span key={size} className="inline-flex items-center gap-1 px-3 py-1 bg-secondary/10 text-secondary rounded-full text-sm font-medium">
+                      Taille: {size}
+                      <button
+                        onClick={() => toggleSize(size)}
+                        className="ml-1 hover:bg-secondary/20 rounded-full p-0.5 focus:outline-none focus:ring-2 focus:ring-secondary"
+                        aria-label={`Retirer le filtre taille ${size}`}
+                      >
+                        <X size={14} />
+                      </button>
+                    </span>
+                  ))}
+                  {selectedColors.map(color => (
+                    <span key={color} className="inline-flex items-center gap-1 px-3 py-1 bg-secondary/10 text-secondary rounded-full text-sm font-medium">
+                      Couleur: {color}
+                      <button
+                        onClick={() => toggleColor(color)}
+                        className="ml-1 hover:bg-secondary/20 rounded-full p-0.5 focus:outline-none focus:ring-2 focus:ring-secondary"
+                        aria-label={`Retirer le filtre couleur ${color}`}
+                      >
+                        <X size={14} />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
             <div className="flex items-center gap-4">
               <button
                 onClick={() => setShowFilters(true)}
-                className="lg:hidden px-4 py-2 border-2 border-neutral-support rounded-lg hover:border-primary transition-colors"
+                className="lg:hidden px-4 py-2 border-2 border-neutral-support rounded-lg hover:border-primary transition-colors min-h-[44px] focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-offset-2"
+                aria-label="Ouvrir les filtres"
               >
                 Filtres
               </button>
@@ -320,12 +408,65 @@ export default function Shop() {
           </div>
 
           {/* Grille produits */}
-          {filteredProducts.length > 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-              {filteredProducts.map((product) => (
-                <ProductCard key={product.id} product={product} />
-              ))}
-            </div>
+          {paginatedProducts.length > 0 ? (
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                {paginatedProducts.map((product) => (
+                  <ProductCard key={product.id} product={product} />
+                ))}
+              </div>
+              
+              {/* Pagination */}
+              {totalPages > 1 && (
+                <div className="mt-8 flex justify-center items-center gap-2">
+                  <button
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                    className="px-4 py-2 border-2 border-neutral-support rounded-lg hover:border-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px] focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-offset-2"
+                    aria-label="Page précédente"
+                  >
+                    Précédent
+                  </button>
+                  <div className="flex gap-1">
+                    {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                      let pageNum;
+                      if (totalPages <= 5) {
+                        pageNum = i + 1;
+                      } else if (currentPage <= 3) {
+                        pageNum = i + 1;
+                      } else if (currentPage >= totalPages - 2) {
+                        pageNum = totalPages - 4 + i;
+                      } else {
+                        pageNum = currentPage - 2 + i;
+                      }
+                      return (
+                        <button
+                          key={pageNum}
+                          onClick={() => setCurrentPage(pageNum)}
+                          className={`px-4 py-2 rounded-lg border-2 transition-colors min-w-[44px] min-h-[44px] focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-offset-2 ${
+                            currentPage === pageNum
+                              ? 'border-secondary bg-secondary text-white'
+                              : 'border-neutral-support text-text-dark hover:border-primary'
+                          }`}
+                          aria-label={`Page ${pageNum}`}
+                          aria-current={currentPage === pageNum ? 'page' : undefined}
+                        >
+                          {pageNum}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <button
+                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={currentPage === totalPages}
+                    className="px-4 py-2 border-2 border-neutral-support rounded-lg hover:border-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px] focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-offset-2"
+                    aria-label="Page suivante"
+                  >
+                    Suivant
+                  </button>
+                </div>
+              )}
+            </>
           ) : (
             <div className="text-center py-16">
               <p className="text-xl text-text-dark/80 mb-4">
@@ -340,25 +481,35 @@ export default function Shop() {
       </div>
 
       {/* Modal filtres mobile */}
-      {showFilters && (
-        <div className="lg:hidden fixed inset-0 z-50 bg-black/50" onClick={() => setShowFilters(false)}>
-          <div
-            className="absolute right-0 top-0 h-full w-80 bg-white p-6 overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-xl font-heading font-semibold text-text-dark">Filtres</h2>
-              <button
-                onClick={() => setShowFilters(false)}
-                className="text-text-dark hover:text-secondary"
-              >
-                ✕
-              </button>
-            </div>
-            <FilterSidebar />
+      <div 
+        className={`lg:hidden fixed inset-0 z-50 transition-opacity duration-300 ${
+          showFilters ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+        }`}
+        onClick={() => setShowFilters(false)}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Filtres de recherche"
+      >
+        <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" aria-hidden="true" />
+        <div
+          className={`absolute right-0 top-0 h-full w-80 bg-white p-6 overflow-y-auto shadow-2xl transform transition-transform duration-300 ease-out ${
+            showFilters ? 'translate-x-0' : 'translate-x-full'
+          }`}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-xl font-heading font-semibold text-text-dark">Filtres</h2>
+            <button
+              onClick={() => setShowFilters(false)}
+              className="text-text-dark hover:text-secondary p-2 rounded-lg hover:bg-primary/10 transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-offset-2"
+              aria-label="Fermer les filtres"
+            >
+              ✕
+            </button>
           </div>
+          <FilterSidebar />
         </div>
-      )}
+      </div>
     </div>
     </>
   );

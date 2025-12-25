@@ -4,6 +4,7 @@ import { useCart } from '../context/CartContext';
 import { Button } from '../components/ui/Button';
 import { formatPrice } from '../utils/formatters';
 import { QuantitySelector } from '../components/product/QuantitySelector';
+import toast from 'react-hot-toast';
 
 export default function Cart() {
   const { items, removeItem, updateQuantity, getSubtotal, getTotal, clearCart } = useCart();
@@ -44,12 +45,21 @@ export default function Cart() {
             >
               <Link
                 to={`/produit/${item.productId}`}
-                className="flex-shrink-0 w-full sm:w-32 h-32 overflow-hidden rounded-lg"
+                className="flex-shrink-0 w-full sm:w-32 h-32 overflow-hidden rounded-lg bg-neutral-support relative"
               >
+                <div className="absolute inset-0 bg-gradient-to-br from-neutral-support to-neutral-support/50 animate-pulse" aria-hidden="true" />
                 <img
                   src={item.product.images[0]}
                   alt={item.product.name}
-                  className="w-full h-full object-cover"
+                  className="w-full h-full object-cover relative z-10"
+                  loading="lazy"
+                  decoding="async"
+                  onLoad={(e) => {
+                    const placeholder = e.currentTarget.parentElement?.querySelector('.animate-pulse');
+                    if (placeholder) {
+                      placeholder.classList.add('opacity-0', 'transition-opacity', 'duration-300');
+                    }
+                  }}
                 />
               </Link>
 
@@ -99,7 +109,15 @@ export default function Cart() {
           ))}
 
           <div className="flex justify-end pt-4">
-            <Button variant="outline" onClick={clearCart}>
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                if (window.confirm('Êtes-vous sûr de vouloir vider votre panier ?')) {
+                  clearCart();
+                  toast.success('Panier vidé');
+                }
+              }}
+            >
               Vider le panier
             </Button>
           </div>
@@ -141,15 +159,15 @@ export default function Cart() {
               </div>
             </div>
 
-            <div className="mb-4">
-              <input
-                type="text"
-                placeholder="Code promo"
-                className="w-full px-4 py-2 border-2 border-neutral-support rounded-lg focus:outline-none focus:border-primary mb-2"
-              />
-              <Button variant="outline" className="w-full">
-                Appliquer
-              </Button>
+            <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+              <p className="text-sm text-green-800 font-medium mb-1">
+                🎁 Livraison gratuite à partir de 200 000 Ar
+              </p>
+              {getSubtotal() < 200000 && (
+                <p className="text-xs text-green-700">
+                  Il vous reste {formatPrice(200000 - getSubtotal())} pour bénéficier de la livraison gratuite
+                </p>
+              )}
             </div>
 
             <Link to="/checkout">

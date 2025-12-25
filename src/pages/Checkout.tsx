@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
@@ -6,6 +6,7 @@ import { Button } from '../components/ui/Button';
 import { formatPrice } from '../utils/formatters';
 import { Address } from '../types';
 import toast from 'react-hot-toast';
+import { ArrowLeft } from 'lucide-react';
 
 type Step = 'shipping' | 'payment' | 'confirmation';
 
@@ -27,9 +28,49 @@ export default function Checkout() {
     'cash_on_delivery'
   );
   const [orderNumber] = useState(`CMD-${Date.now()}`);
+  const [promoCode, setPromoCode] = useState('');
+  const [promoDiscount, setPromoDiscount] = useState(0);
+  const [promoApplied, setPromoApplied] = useState(false);
 
   const shippingCost = getSubtotal() >= 200000 ? 0 : 10000;
-  const total = getTotal(shippingCost);
+  const subtotal = getSubtotal();
+  const discount = promoDiscount;
+  const total = subtotal - discount + shippingCost;
+
+  // Charger l'adresse sauvegardée depuis localStorage
+  useEffect(() => {
+    const savedAddress = localStorage.getItem('saved_shipping_address');
+    if (savedAddress && user) {
+      try {
+        const address = JSON.parse(savedAddress);
+        setShippingAddress((prev) => ({
+          ...prev,
+          ...address,
+        }));
+      } catch (e) {
+        console.error('Erreur lors du chargement de l\'adresse sauvegardée', e);
+      }
+    }
+  }, [user]);
+
+  const handleApplyPromo = () => {
+    // Codes promo simples (à remplacer par une vraie logique backend)
+    const promoCodes: { [key: string]: number } = {
+      'WELCOME10': 0.1,
+      'SALE20': 0.2,
+      'BYVALUE15': 0.15,
+    };
+    
+    const code = promoCode.toUpperCase().trim();
+    if (promoCodes[code]) {
+      const discountAmount = subtotal * promoCodes[code];
+      setPromoDiscount(discountAmount);
+      setPromoApplied(true);
+      toast.success(`Code promo appliqué ! Réduction de ${Math.round(promoCodes[code] * 100)}%`);
+    } else {
+      toast.error('Code promo invalide');
+    }
+  };
 
   const handleShippingSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -40,6 +81,8 @@ export default function Checkout() {
       shippingAddress.city &&
       shippingAddress.phone
     ) {
+      // Sauvegarder l'adresse dans localStorage
+      localStorage.setItem('saved_shipping_address', JSON.stringify(shippingAddress));
       setStep('payment');
     } else {
       toast.error('Veuillez remplir tous les champs obligatoires');
@@ -60,7 +103,24 @@ export default function Checkout() {
 
   return (
     <div className="container mx-auto px-4 py-8">
-      <h1 className="text-3xl font-heading font-bold text-text-dark mb-8">Commande</h1>
+      <div className="flex items-center gap-4 mb-6">
+        {step !== 'shipping' && (
+          <button
+            onClick={() => {
+              if (step === 'payment') {
+                setStep('shipping');
+              } else {
+                navigate('/panier');
+              }
+            }}
+            className="p-2 rounded-lg hover:bg-primary/10 transition-colors focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-offset-2 min-w-[44px] min-h-[44px] flex items-center justify-center"
+            aria-label="Retour"
+          >
+            <ArrowLeft size={20} />
+          </button>
+        )}
+        <h1 className="text-3xl font-heading font-bold text-text-dark">Commande</h1>
+      </div>
 
       {/* Étapes */}
       <div className="mb-8">
@@ -300,11 +360,22 @@ export default function Checkout() {
               <div className="space-y-4 mb-6">
                 {items.map((item) => (
                   <div key={item.id} className="flex gap-3">
-                    <img
-                      src={item.product.images[0]}
-                      alt={item.product.name}
-                      className="w-16 h-16 object-cover rounded"
-                    />
+                    <div className="w-16 h-16 rounded bg-neutral-support relative overflow-hidden">
+                      <div className="absolute inset-0 bg-gradient-to-br from-neutral-support to-neutral-support/50 animate-pulse" aria-hidden="true" />
+                      <img
+                        src={item.product.images[0]}
+                        alt={item.product.name}
+                        className="w-full h-full object-cover relative z-10"
+                        loading="lazy"
+                        decoding="async"
+                        onLoad={(e) => {
+                          const placeholder = e.currentTarget.parentElement?.querySelector('.animate-pulse');
+                          if (placeholder) {
+                            placeholder.classList.add('opacity-0', 'transition-opacity', 'duration-300');
+                          }
+                        }}
+                      />
+                    </div>
                     <div className="flex-1">
                       <p className="text-sm font-medium text-text-dark">{item.product.name}</p>
                       <p className="text-xs text-text-dark/80">
@@ -324,23 +395,59 @@ export default function Checkout() {
               <div className="border-t border-neutral-support pt-4 space-y-2">
                 <div className="flex justify-between text-text-dark/80">
                   <span>Sous-total</span>
-                  <span>{formatPrice(getSubtotal())}</span>
+                  <span>{formatPrice(subtotal)}</span>
                 </div>
+                {promoApplied && discount > 0 && (
+                  <div className="flex justify-between text-green-600">
+                    <span>Réduction</span>
+                    <span>-{formatPrice(discount)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between text-text-dark/80">
                   <span>Livraison</span>
                   <span>
                     {shippingCost === 0 ? (
-                      <span className="text-green-600">Gratuite</span>
+                      <span className="text-green-600 font-semibold">Gratuite</span>
                     ) : (
                       formatPrice(shippingCost)
                     )}
                   </span>
                 </div>
+                {subtotal < 200000 && (
+                  <div className="p-2 bg-accent/10 border border-accent rounded-lg">
+                    <p className="text-sm text-accent font-medium">
+                      Ajoutez {formatPrice(200000 - subtotal)} pour la livraison gratuite !
+                    </p>
+                  </div>
+                )}
                 <div className="flex justify-between text-lg font-bold text-text-dark pt-2 border-t border-neutral-support">
                   <span>Total</span>
                   <span>{formatPrice(total)}</span>
                 </div>
               </div>
+              
+              {/* Code promo */}
+              {step === 'payment' && (
+                <div className="mt-4 pt-4 border-t border-neutral-support">
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={promoCode}
+                      onChange={(e) => setPromoCode(e.target.value)}
+                      placeholder="Code promo"
+                      disabled={promoApplied}
+                      className="flex-1 px-4 py-2 border-2 border-neutral-support rounded-lg focus:outline-none focus:border-primary disabled:opacity-50"
+                    />
+                    <Button
+                      variant="outline"
+                      onClick={handleApplyPromo}
+                      disabled={promoApplied || !promoCode.trim()}
+                    >
+                      {promoApplied ? 'Appliqué' : 'Appliquer'}
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}

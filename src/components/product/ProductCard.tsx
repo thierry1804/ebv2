@@ -93,7 +93,10 @@ export function ProductCard({ product }: ProductCardProps) {
       onMouseLeave={handleMouseLeave}
     >
       <Link to={`/produit/${product.id}`} className="block">
-        <div className="relative overflow-hidden aspect-square">
+        <div className="relative overflow-hidden aspect-square bg-neutral-support">
+          {/* Placeholder skeleton pendant le chargement */}
+          <div className="absolute inset-0 bg-gradient-to-br from-neutral-support to-neutral-support/50 animate-pulse" aria-hidden="true" />
+          
           {/* Image actuelle */}
           <img
             src={product.images[currentImageIndex]}
@@ -103,6 +106,14 @@ export function ProductCard({ product }: ProductCardProps) {
               opacity === 1 ? "opacity-100" : "opacity-0"
             )}
             loading="lazy"
+            decoding="async"
+            onLoad={(e) => {
+              // Masquer le placeholder une fois l'image chargée
+              const placeholder = e.currentTarget.parentElement?.querySelector('.animate-pulse');
+              if (placeholder) {
+                placeholder.classList.add('opacity-0', 'transition-opacity', 'duration-300');
+              }
+            }}
           />
           {/* Image suivante pour le crossfade */}
           {hasMultipleImages && (
@@ -114,6 +125,7 @@ export function ProductCard({ product }: ProductCardProps) {
                 opacity === 0 ? "opacity-100" : "opacity-0"
               )}
               loading="lazy"
+              decoding="async"
             />
           )}
           {product.isNew && (

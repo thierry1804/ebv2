@@ -188,12 +188,21 @@ export default function Home() {
               <Link
                 key={category.id}
                 to={`/boutique?category=${category.slug}`}
-                className="group relative aspect-square overflow-hidden rounded-lg shadow-sm hover:shadow-lg transition-all duration-300"
+                className="group relative aspect-square overflow-hidden rounded-lg shadow-sm hover:shadow-lg transition-all duration-300 bg-neutral-support"
               >
+                <div className="absolute inset-0 bg-gradient-to-br from-neutral-support to-neutral-support/50 animate-pulse" aria-hidden="true" />
                 <img
                   src={category.image}
                   alt={category.name}
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 relative z-10"
+                  loading="lazy"
+                  decoding="async"
+                  onLoad={(e) => {
+                    const placeholder = e.currentTarget.parentElement?.querySelector('.animate-pulse');
+                    if (placeholder) {
+                      placeholder.classList.add('opacity-0', 'transition-opacity', 'duration-300');
+                    }
+                  }}
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end">
                   <h3 className="text-white font-heading font-semibold p-4 text-lg">
@@ -294,12 +303,21 @@ export default function Home() {
                 href={post?.link || '#'}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="aspect-square overflow-hidden rounded-lg bg-neutral-support"
+                className="aspect-square overflow-hidden rounded-lg bg-neutral-support relative"
               >
+                <div className="absolute inset-0 bg-gradient-to-br from-neutral-support to-neutral-support/50 animate-pulse" aria-hidden="true" />
                 <img
                   src={post?.image || `https://images.unsplash.com/photo-${1500000000000 + i}?w=400`}
                   alt={`Instagram post ${i + 1}`}
-                  className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
+                  className="w-full h-full object-cover hover:scale-105 transition-transform duration-300 relative z-10"
+                  loading="lazy"
+                  decoding="async"
+                  onLoad={(e) => {
+                    const placeholder = e.currentTarget.parentElement?.querySelector('.animate-pulse');
+                    if (placeholder) {
+                      placeholder.classList.add('opacity-0', 'transition-opacity', 'duration-300');
+                    }
+                  }}
                 />
               </a>
             ))}
