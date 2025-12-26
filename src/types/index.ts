@@ -72,6 +72,23 @@ export interface Order {
   promoDiscount?: number;
 }
 
+export interface DatabaseOrder {
+  id: string;
+  user_id: string | null;
+  order_number: string;
+  status: 'pending' | 'confirmed' | 'shipped' | 'delivered' | 'cancelled';
+  subtotal: number;
+  shipping: number;
+  total: number;
+  payment_method: string | null;
+  shipping_address: any; // JSONB
+  items: any; // JSONB
+  promo_code_id: string | null;
+  promo_discount: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Review {
   id: string;
   productId: string;

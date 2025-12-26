@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { usePromoCodes } from '../hooks/usePromoCodes';
+import { useOrders } from '../hooks/useOrders';
 import { Button } from '../components/ui/Button';
 import { formatPrice } from '../utils/formatters';
 import { Address } from '../types';
@@ -15,8 +16,10 @@ export default function Checkout() {
   const navigate = useNavigate();
   const { items, getSubtotal, getTotal, clearCart } = useCart();
   const { user } = useAuth();
-  const { validatePromoCode, isLoading: isPromoLoading } = usePromoCodes();
+  const { validatePromoCode, recordPromoCodeUsage, isLoading: isPromoLoading } = usePromoCodes();
+  const { createOrder, isLoading: isCreatingOrder } = useOrders();
   const [step, setStep] = useState<Step>('shipping');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [shippingAddress, setShippingAddress] = useState<Partial<Address>>({
     firstName: user?.firstName || '',
     lastName: user?.lastName || '',
@@ -99,11 +102,77 @@ export default function Checkout() {
     }
   };
 
-  const handlePaymentSubmit = (e: React.FormEvent) => {
+  const handlePaymentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setStep('confirmation');
-    clearCart();
-    toast.success('Commande confirmée !');
+    
+    // Vérifier que l'adresse est complète
+    if (
+      !shippingAddress.firstName ||
+      !shippingAddress.lastName ||
+      !shippingAddress.street ||
+      !shippingAddress.city ||
+      !shippingAddress.phone
+    ) {
+      toast.error('Veuillez remplir tous les champs obligatoires de l\'adresse');
+      return;
+    }
+
+    // Vérifier qu'il y a des articles dans le panier
+    if (items.length === 0) {
+      toast.error('Votre panier est vide');
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      // Préparer l'adresse complète pour la commande
+      const completeAddress: Address = {
+        id: '',
+        label: 'Adresse de livraison',
+        firstName: shippingAddress.firstName!,
+        lastName: shippingAddress.lastName!,
+        street: shippingAddress.street!,
+        city: shippingAddress.city!,
+        postalCode: shippingAddress.postalCode || '',
+        country: shippingAddress.country || 'Madagascar',
+        phone: shippingAddress.phone!,
+      };
+
+      // Créer la commande dans Supabase
+      const order = await createOrder(
+        user?.id || null,
+        items,
+        completeAddress,
+        paymentMethod,
+        subtotal,
+        shippingCost,
+        total,
+        orderNumber,
+        promoCodeId,
+        promoDiscount > 0 ? promoDiscount : undefined
+      );
+
+      if (!order) {
+        toast.error('Erreur lors de la création de la commande. Veuillez réessayer.');
+        return;
+      }
+
+      // Enregistrer l'utilisation du code promo si un code promo a été appliqué
+      if (promoCodeId && promoDiscount > 0 && order.id) {
+        await recordPromoCodeUsage(promoCodeId, user?.id || null, order.id, promoDiscount);
+      }
+
+      // Vider le panier et afficher la confirmation
+      clearCart();
+      setStep('confirmation');
+      toast.success('Commande confirmée !');
+    } catch (error: any) {
+      console.error('Erreur lors de la création de la commande:', error);
+      toast.error(error.message || 'Une erreur est survenue lors de la création de la commande. Veuillez réessayer.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   if (items.length === 0 && step !== 'confirmation') {
@@ -327,8 +396,14 @@ export default function Checkout() {
                   </p>
                 </div>
               )}
-              <Button type="submit" variant="primary" size="lg" className="w-full">
-                Confirmer la commande
+              <Button 
+                type="submit" 
+                variant="primary" 
+                size="lg" 
+                className="w-full"
+                disabled={isSubmitting || isCreatingOrder}
+              >
+                {isSubmitting || isCreatingOrder ? 'Traitement en cours...' : 'Confirmer la commande'}
               </Button>
             </form>
           )}

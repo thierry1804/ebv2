@@ -14,6 +14,7 @@ import {
   Layout,
   Tags,
   Ticket,
+  Package,
 } from 'lucide-react';
 
 interface AdminLayoutProps {
@@ -35,6 +36,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
     { path: '/admin', icon: LayoutDashboard, label: 'Dashboard' },
     { path: '/admin/categories', icon: Tags, label: 'Catégories' },
     { path: '/admin/produits', icon: ShoppingBag, label: 'Produits' },
+    { path: '/admin/commandes', icon: Package, label: 'Commandes' },
     { path: '/admin/codes-promo', icon: Ticket, label: 'Codes promo' },
     { path: '/admin/utilisateurs', icon: Users, label: 'Utilisateurs' },
     { path: '/admin/articles', icon: FileText, label: 'Articles de blog' },

@@ -35,6 +35,7 @@ const AdminContent = lazy(() => import('./pages/admin/AdminContent'));
 const AdminLandingPage = lazy(() => import('./pages/admin/AdminLandingPage'));
 const AdminCategories = lazy(() => import('./pages/admin/AdminCategories'));
 const AdminPromoCodes = lazy(() => import('./pages/admin/AdminPromoCodes'));
+const AdminOrders = lazy(() => import('./pages/admin/AdminOrders'));
 
 // Composant de chargement
 const LoadingFallback = () => (
@@ -103,6 +104,7 @@ function App() {
                               <Route path="/landing-page" element={<AdminLandingPage />} />
                               <Route path="/categories" element={<AdminCategories />} />
                               <Route path="/codes-promo" element={<AdminPromoCodes />} />
+                              <Route path="/commandes" element={<AdminOrders />} />
                             </Routes>
                           </Suspense>
                         </AdminLayout>
