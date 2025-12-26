@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
+import { usePromoCodes } from '../hooks/usePromoCodes';
 import { Button } from '../components/ui/Button';
 import { formatPrice } from '../utils/formatters';
 import { Address } from '../types';
@@ -14,6 +15,7 @@ export default function Checkout() {
   const navigate = useNavigate();
   const { items, getSubtotal, getTotal, clearCart } = useCart();
   const { user } = useAuth();
+  const { validatePromoCode, isLoading: isPromoLoading } = usePromoCodes();
   const [step, setStep] = useState<Step>('shipping');
   const [shippingAddress, setShippingAddress] = useState<Partial<Address>>({
     firstName: user?.firstName || '',
@@ -31,6 +33,7 @@ export default function Checkout() {
   const [promoCode, setPromoCode] = useState('');
   const [promoDiscount, setPromoDiscount] = useState(0);
   const [promoApplied, setPromoApplied] = useState(false);
+  const [promoCodeId, setPromoCodeId] = useState<string | null>(null);
 
   const shippingCost = getSubtotal() >= 200000 ? 0 : 10000;
   const subtotal = getSubtotal();
@@ -53,22 +56,29 @@ export default function Checkout() {
     }
   }, [user]);
 
-  const handleApplyPromo = () => {
-    // Codes promo simples (à remplacer par une vraie logique backend)
-    const promoCodes: { [key: string]: number } = {
-      'WELCOME10': 0.1,
-      'SALE20': 0.2,
-      'BYVALUE15': 0.15,
-    };
-    
-    const code = promoCode.toUpperCase().trim();
-    if (promoCodes[code]) {
-      const discountAmount = subtotal * promoCodes[code];
-      setPromoDiscount(discountAmount);
+  const handleApplyPromo = async () => {
+    if (!promoCode.trim()) {
+      toast.error('Veuillez saisir un code promo');
+      return;
+    }
+
+    const result = await validatePromoCode(promoCode, user?.id || null, subtotal);
+
+    if (result.isValid && result.discountAmount > 0) {
+      setPromoDiscount(result.discountAmount);
       setPromoApplied(true);
-      toast.success(`Code promo appliqué ! Réduction de ${Math.round(promoCodes[code] * 100)}%`);
+      setPromoCodeId(result.promoCodeId || null);
+      
+      const discountText = result.promoCodeType === 'percentage'
+        ? `${result.promoCodeValue}%`
+        : formatPrice(result.promoCodeValue || 0);
+      
+      toast.success(`Code promo appliqué ! Réduction de ${discountText}`);
     } else {
-      toast.error('Code promo invalide');
+      toast.error(result.errorMessage || 'Code promo invalide');
+      setPromoDiscount(0);
+      setPromoApplied(false);
+      setPromoCodeId(null);
     }
   };
 
@@ -441,9 +451,9 @@ export default function Checkout() {
                     <Button
                       variant="outline"
                       onClick={handleApplyPromo}
-                      disabled={promoApplied || !promoCode.trim()}
+                      disabled={promoApplied || !promoCode.trim() || isPromoLoading}
                     >
-                      {promoApplied ? 'Appliqué' : 'Appliquer'}
+                      {isPromoLoading ? 'Vérification...' : promoApplied ? 'Appliqué' : 'Appliquer'}
                     </Button>
                   </div>
                 </div>

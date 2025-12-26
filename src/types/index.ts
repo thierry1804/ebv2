@@ -68,6 +68,8 @@ export interface Order {
   status: 'pending' | 'confirmed' | 'shipped' | 'delivered' | 'cancelled';
   createdAt: string;
   orderNumber: string;
+  promoCodeId?: string;
+  promoDiscount?: number;
 }
 
 export interface Review {
@@ -216,5 +218,55 @@ export interface SocialMediaConfig {
   twitterUrl?: string;
   tiktokUrl?: string;
   isVisible: boolean;
+}
+
+// Types pour les codes promo
+export interface PromoCode {
+  id: string;
+  code: string;
+  type: 'percentage' | 'fixed';
+  value: number;
+  validFrom?: string;
+  validUntil?: string;
+  usageLimitPerUser: number;
+  minOrderAmount?: number;
+  isActive: boolean;
+  description?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DatabasePromoCode {
+  id: string;
+  code: string;
+  type: 'percentage' | 'fixed';
+  value: number;
+  valid_from: string | null;
+  valid_until: string | null;
+  usage_limit_per_user: number;
+  min_order_amount: number | null;
+  is_active: boolean;
+  description: string | null;
+  created_at: string;
+  updated_at: string;
+  created_by: string | null;
+}
+
+export interface PromoCodeValidationResult {
+  isValid: boolean;
+  discountAmount: number;
+  errorMessage?: string;
+  promoCodeId?: string;
+  promoCodeType?: 'percentage' | 'fixed';
+  promoCodeValue?: number;
+}
+
+export interface PromoCodeUsage {
+  id: string;
+  promoCodeId: string;
+  userId?: string;
+  orderId?: string;
+  usedAt: string;
+  discountAmount: number;
 }
 
