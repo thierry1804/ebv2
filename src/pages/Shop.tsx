@@ -6,12 +6,13 @@ import { useCategories } from '../hooks/useCategories';
 import { useProducts } from '../hooks/useProducts';
 import { SEO } from '../components/seo/SEO';
 import { normalizeColors, ColorWithHex } from '../config/colors';
+import { ModernSpinner } from '../components/ui/Loading';
 import toast from 'react-hot-toast';
 import { X } from 'lucide-react';
 
 export default function Shop() {
   const { categories } = useCategories();
-  const { products } = useProducts();
+  const { products, isLoading } = useProducts();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const [showFilters, setShowFilters] = useState(false);
@@ -408,7 +409,9 @@ export default function Shop() {
           </div>
 
           {/* Grille produits */}
-          {paginatedProducts.length > 0 ? (
+          {isLoading ? (
+            <ModernSpinner />
+          ) : paginatedProducts.length > 0 ? (
             <>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                 {paginatedProducts.map((product) => (
