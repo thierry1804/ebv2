@@ -479,32 +479,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Nettoyer le cache du profil
       profileCache.clear();
       
-      // Nettoyer le localStorage (panier et wishlist)
-      try {
-        localStorage.removeItem('eshop_cart');
-        localStorage.removeItem('eshop_wishlist');
-      } catch (storageError) {
-        console.error('Erreur lors du nettoyage du localStorage:', storageError);
-      }
-      
-      // Déclencher un événement pour notifier les autres contextes
-      window.dispatchEvent(new CustomEvent('user-logout'));
-      
       toast.success('Déconnexion réussie');
     } catch (error) {
       console.error('Erreur lors de la déconnexion:', error);
       // Nettoyer quand même l'état local même en cas d'erreur
       setUser(null);
       profileCache.clear();
-      try {
-        localStorage.removeItem('eshop_cart');
-        localStorage.removeItem('eshop_wishlist');
-      } catch (storageError) {
-        console.error('Erreur lors du nettoyage du localStorage:', storageError);
-      }
-      
-      // Déclencher un événement pour notifier les autres contextes
-      window.dispatchEvent(new CustomEvent('user-logout'));
       
       toast.error('Erreur lors de la déconnexion');
     }

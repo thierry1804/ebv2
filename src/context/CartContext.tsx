@@ -1,5 +1,7 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode, useRef, useCallback } from 'react';
 import { CartItem, Product } from '../types';
+import { supabase } from '../lib/supabase';
+import { useAuth } from './AuthContext';
 
 interface CartContextType {
   items: CartItem[];
@@ -10,6 +12,7 @@ interface CartContextType {
   getTotalItems: () => number;
   getSubtotal: () => number;
   getTotal: (shipping?: number) => number;
+  isLoading: boolean;
 }
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
@@ -17,26 +20,129 @@ const CartContext = createContext<CartContextType | undefined>(undefined);
 const STORAGE_KEY = 'eshop_cart';
 
 export function CartProvider({ children }: { children: ReactNode }) {
-  const [items, setItems] = useState<CartItem[]>(() => {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    return stored ? JSON.parse(stored) : [];
-  });
+  const { user, isAuthenticated } = useAuth();
+  const [items, setItems] = useState<CartItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const isInitialized = useRef(false);
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Sauvegarder le panier en base de données
+  const saveCartToDatabase = useCallback(async (cartItems: CartItem[]) => {
+    if (!isAuthenticated || !user?.id) return;
+
+    try {
+      const { error } = await supabase
+        .from('user_cart')
+        .upsert({
+          user_id: user.id,
+          items: cartItems,
+        }, {
+          onConflict: 'user_id'
+        });
+
+      if (error) {
+        console.error('Erreur lors de la sauvegarde du panier:', error);
+      }
+    } catch (error) {
+      console.error('Erreur lors de la sauvegarde du panier:', error);
+    }
+  }, [isAuthenticated, user?.id]);
+
+  // Charger le panier depuis localStorage ou Supabase
   useEffect(() => {
+    const loadCart = async () => {
+      setIsLoading(true);
+
+      try {
+        if (isAuthenticated && user?.id) {
+          // Charger depuis Supabase
+          const { data, error } = await supabase
+            .from('user_cart')
+            .select('items')
+            .eq('user_id', user.id)
+            .maybeSingle();
+
+          // Gérer les erreurs (PGRST116 = pas de résultat, c'est normal)
+          if (error) {
+            if (error.code === 'PGRST116') {
+              // Pas de panier en base, c'est normal pour un nouvel utilisateur
+              console.log('Aucun panier trouvé en base pour cet utilisateur');
+            } else {
+              console.error('Erreur lors du chargement du panier:', error);
+            }
+          }
+
+          if (data?.items && Array.isArray(data.items) && data.items.length > 0) {
+            setItems(data.items as CartItem[]);
+            // Synchroniser avec localStorage
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(data.items));
+          } else {
+            // Si pas de panier en base, vérifier localStorage et fusionner
+            const localCart = localStorage.getItem(STORAGE_KEY);
+            if (localCart) {
+              const localItems = JSON.parse(localCart) as CartItem[];
+              if (localItems.length > 0) {
+                // Sauvegarder le panier local en base
+                await saveCartToDatabase(localItems);
+                setItems(localItems);
+              } else {
+                setItems([]);
+              }
+            } else {
+              setItems([]);
+            }
+          }
+        } else {
+          // Charger depuis localStorage
+          const stored = localStorage.getItem(STORAGE_KEY);
+          if (stored) {
+            setItems(JSON.parse(stored));
+          } else {
+            setItems([]);
+          }
+        }
+      } catch (error) {
+        console.error('Erreur lors du chargement du panier:', error);
+        // Fallback sur localStorage
+        const stored = localStorage.getItem(STORAGE_KEY);
+        if (stored) {
+          setItems(JSON.parse(stored));
+        } else {
+          setItems([]);
+        }
+      } finally {
+        setIsLoading(false);
+        isInitialized.current = true;
+      }
+    };
+
+    loadCart();
+  }, [isAuthenticated, user?.id, saveCartToDatabase]);
+
+  // Sauvegarder automatiquement (avec debounce)
+  useEffect(() => {
+    if (!isInitialized.current) return;
+
+    // Sauvegarder dans localStorage
     localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
-  }, [items]);
 
-  // Écouter les événements de déconnexion pour vider le panier
-  useEffect(() => {
-    const handleLogout = () => {
-      setItems([]);
-    };
+    // Sauvegarder en base (avec debounce de 500ms)
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
 
-    window.addEventListener('user-logout', handleLogout);
+    saveTimeoutRef.current = setTimeout(() => {
+      if (isAuthenticated && user?.id) {
+        saveCartToDatabase(items);
+      }
+    }, 500);
+
     return () => {
-      window.removeEventListener('user-logout', handleLogout);
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
     };
-  }, []);
+  }, [items, isAuthenticated, user?.id]);
 
   const addItem = (product: Product, size: string | null, color: string | null, quantity = 1) => {
     setItems((prevItems) => {
@@ -114,6 +220,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
         getTotalItems,
         getSubtotal,
         getTotal,
+        isLoading,
       }}
     >
       {children}
