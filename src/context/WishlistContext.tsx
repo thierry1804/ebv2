@@ -23,6 +23,18 @@ export function WishlistProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
   }, [items]);
 
+  // Écouter les événements de déconnexion pour vider la wishlist
+  useEffect(() => {
+    const handleLogout = () => {
+      setItems([]);
+    };
+
+    window.addEventListener('user-logout', handleLogout);
+    return () => {
+      window.removeEventListener('user-logout', handleLogout);
+    };
+  }, []);
+
   const addToWishlist = (product: Product) => {
     setItems((prevItems) => {
       if (prevItems.find((item) => item.id === product.id)) {

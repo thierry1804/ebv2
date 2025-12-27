@@ -26,6 +26,18 @@ export function CartProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
   }, [items]);
 
+  // Écouter les événements de déconnexion pour vider le panier
+  useEffect(() => {
+    const handleLogout = () => {
+      setItems([]);
+    };
+
+    window.addEventListener('user-logout', handleLogout);
+    return () => {
+      window.removeEventListener('user-logout', handleLogout);
+    };
+  }, []);
+
   const addItem = (product: Product, size: string | null, color: string | null, quantity = 1) => {
     setItems((prevItems) => {
       const existingItem = prevItems.find(

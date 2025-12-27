@@ -7,7 +7,7 @@ interface AuthContextType {
   user: User | null;
   login: (email: string, password: string) => Promise<boolean>;
   register: (email: string, password: string, firstName: string, lastName: string, phone?: string) => Promise<boolean>;
-  logout: () => void;
+  logout: () => Promise<void>;
   isAuthenticated: boolean;
   isLoading: boolean;
 }
@@ -466,15 +466,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
       
       if (supabaseUrl && supabaseAnonKey && !supabaseUrl.includes('placeholder')) {
-        await supabase.auth.signOut();
+        const { error } = await supabase.auth.signOut();
+        if (error) {
+          console.error('Erreur lors de la déconnexion Supabase:', error);
+          // Continuer quand même avec le nettoyage local
+        }
       }
+      
+      // Nettoyer l'état utilisateur
       setUser(null);
-      // Nettoyer le cache lors de la déconnexion
+      
+      // Nettoyer le cache du profil
       profileCache.clear();
+      
+      // Nettoyer le localStorage (panier et wishlist)
+      try {
+        localStorage.removeItem('eshop_cart');
+        localStorage.removeItem('eshop_wishlist');
+      } catch (storageError) {
+        console.error('Erreur lors du nettoyage du localStorage:', storageError);
+      }
+      
+      // Déclencher un événement pour notifier les autres contextes
+      window.dispatchEvent(new CustomEvent('user-logout'));
+      
+      toast.success('Déconnexion réussie');
     } catch (error) {
       console.error('Erreur lors de la déconnexion:', error);
+      // Nettoyer quand même l'état local même en cas d'erreur
       setUser(null);
       profileCache.clear();
+      try {
+        localStorage.removeItem('eshop_cart');
+        localStorage.removeItem('eshop_wishlist');
+      } catch (storageError) {
+        console.error('Erreur lors du nettoyage du localStorage:', storageError);
+      }
+      
+      // Déclencher un événement pour notifier les autres contextes
+      window.dispatchEvent(new CustomEvent('user-logout'));
+      
+      toast.error('Erreur lors de la déconnexion');
     }
   };
 

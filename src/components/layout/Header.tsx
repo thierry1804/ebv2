@@ -356,9 +356,10 @@ export function Header() {
                     Mon compte
                   </Link>
                   <button
-                    onClick={() => {
-                      logout();
+                    onClick={async () => {
+                      await logout();
                       setIsMobileMenuOpen(false);
+                      navigate('/');
                     }}
                     className="block py-3 px-2 text-text-dark hover:text-secondary hover:bg-primary/10 rounded-lg transition-colors w-full text-left min-h-[44px] flex items-center focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-offset-2"
                     role="menuitem"

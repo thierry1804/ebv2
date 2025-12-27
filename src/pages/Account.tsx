@@ -198,7 +198,10 @@ export default function Account() {
               </button>
             ))}
             <button
-              onClick={logout}
+              onClick={async () => {
+                await logout();
+                navigate('/');
+              }}
               className="w-full text-left px-4 py-2 rounded-lg text-red-600 hover:bg-red-50 transition-colors mt-4"
             >
               Déconnexion
