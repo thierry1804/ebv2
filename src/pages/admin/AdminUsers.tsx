@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Search, Edit, Trash2, Mail, Phone } from 'lucide-react';
+import { Search, Trash2, Mail, Phone } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { useAdminAuth } from '../../context/AdminAuthContext';
 
 interface User {
   id: string;
@@ -14,35 +15,143 @@ interface User {
 }
 
 export default function AdminUsers() {
+  const { isAuthenticated } = useAdminAuth();
   const [users, setUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     // Charger les utilisateurs une seule fois au montage
-    loadUsers();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    if (isAuthenticated) {
+      loadUsers();
+    } else {
+      setIsLoading(false);
+      setError('Vous devez être connecté pour voir les utilisateurs');
+    }
+  }, [isAuthenticated]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadUsers = async () => {
     try {
-      // Récupérer les utilisateurs depuis la table auth.users via une fonction ou vue
-      // Note: Supabase ne permet pas de lire directement auth.users depuis le client
-      // Il faut créer une fonction Edge ou utiliser une table de profil séparée
-      const { data, error } = await supabase
+      setIsLoading(true);
+      setError(null);
+
+      // Vérifier la session actuelle
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        setError('Vous n\'êtes pas authentifié. Veuillez vous reconnecter.');
+        setIsLoading(false);
+        return;
+      }
+
+      // Récupérer les utilisateurs depuis la table user_profiles
+      const { data: usersData, error: queryError } = await supabase
         .from('user_profiles')
-        .select('*')
+        .select('id, email, first_name, last_name, phone, created_at, updated_at')
         .order('created_at', { ascending: false });
 
-      if (error) {
-        // Si la table n'existe pas, on affiche un message
-        console.warn('Table user_profiles non trouvée. Créez cette table dans Supabase.');
+      if (queryError) {
+        console.error('Erreur lors de la récupération des utilisateurs:', queryError);
+        
+        // Analyser le type d'erreur
+        if (queryError.code === 'PGRST116' || queryError.message?.includes('relation') || queryError.message?.includes('does not exist')) {
+          setError('La table "user_profiles" n\'existe pas dans Supabase. Créez cette table pour afficher les utilisateurs.');
+        } else if (queryError.code === '42501' || queryError.message?.includes('permission') || queryError.message?.includes('policy')) {
+          setError('Erreur de permissions RLS. Vérifiez que la politique "Authenticated users can read all profiles" existe sur la table user_profiles.');
+          toast.error('Erreur de permissions. Vérifiez les politiques RLS dans Supabase.');
+        } else {
+          setError(`Erreur: ${queryError.message || 'Erreur inconnue lors du chargement des utilisateurs'}`);
+          toast.error(`Erreur: ${queryError.message || 'Erreur lors du chargement des utilisateurs'}`);
+        }
         setUsers([]);
-      } else {
-        setUsers(data || []);
+        return;
+      }
+
+      if (!usersData || usersData.length === 0) {
+        setError('Aucun utilisateur trouvé dans la table user_profiles. Les utilisateurs sont créés automatiquement lors de l\'inscription.');
+        setUsers([]);
+        return;
+      }
+
+      // Filtrer l'admin de la liste
+      const adminEmail = 'admin@eshopbyvalsue.mg';
+      const filteredUsers = usersData.filter((user: any) => {
+        const userEmail = user.email?.toLowerCase() || '';
+        return userEmail !== adminEmail.toLowerCase();
+      });
+
+      // Récupérer toutes les adresses pour tous les utilisateurs
+      const userIds = filteredUsers.map((u: any) => u.id);
+      
+      let addressesMap: Record<string, string | undefined> = {};
+      
+      if (userIds.length > 0) {
+        const { data: addressesData, error: addressesError } = await supabase
+          .from('user_addresses')
+          .select('user_id, phone, is_default, created_at')
+          .in('user_id', userIds);
+
+        if (!addressesError && addressesData && addressesData.length > 0) {
+          // Grouper les adresses par user_id
+          const addressesByUser: Record<string, any[]> = {};
+          addressesData.forEach((addr: any) => {
+            const userId = addr.user_id;
+            if (!addressesByUser[userId]) {
+              addressesByUser[userId] = [];
+            }
+            addressesByUser[userId].push(addr);
+          });
+
+          // Pour chaque utilisateur, trouver le téléphone approprié
+          Object.keys(addressesByUser).forEach((userId) => {
+            const userAddresses = addressesByUser[userId];
+            
+            // Chercher d'abord l'adresse par défaut
+            const defaultAddress = userAddresses.find((addr: any) => addr.is_default === true);
+            
+            if (defaultAddress && defaultAddress.phone) {
+              addressesMap[userId] = defaultAddress.phone;
+            } else {
+              // Sinon, prendre la dernière adresse créée (la plus récente)
+              const sortedAddresses = userAddresses.sort((a: any, b: any) => {
+                const dateA = new Date(a.created_at).getTime();
+                const dateB = new Date(b.created_at).getTime();
+                return dateB - dateA; // Plus récente en premier
+              });
+              
+              if (sortedAddresses.length > 0 && sortedAddresses[0].phone) {
+                addressesMap[userId] = sortedAddresses[0].phone;
+              }
+            }
+          });
+        }
+      }
+
+      // Mapper les utilisateurs avec le téléphone depuis les adresses
+      const mappedUsers = filteredUsers.map((user: any) => {
+        // Récupérer le téléphone depuis les adresses (priorité à l'adresse par défaut, sinon la dernière)
+        const phoneFromAddress = addressesMap[user.id];
+
+        return {
+          id: user.id,
+          email: user.email || '',
+          first_name: user.first_name || undefined,
+          last_name: user.last_name || undefined,
+          phone: phoneFromAddress || user.phone || undefined, // Priorité au téléphone de l'adresse
+          created_at: user.created_at || new Date().toISOString(),
+          last_login: user.last_login || undefined,
+        };
+      });
+      
+      setUsers(mappedUsers);
+      if (mappedUsers.length === 0) {
+        setError('Aucun utilisateur trouvé dans la table user_profiles. Les utilisateurs sont créés automatiquement lors de l\'inscription.');
       }
     } catch (error: any) {
       console.error('Erreur lors du chargement des utilisateurs:', error);
+      setError(`Erreur: ${error.message || 'Erreur inconnue'}`);
       toast.error('Erreur lors du chargement des utilisateurs');
+      setUsers([]);
     } finally {
       setIsLoading(false);
     }
@@ -114,9 +223,24 @@ export default function AdminUsers() {
             {filteredUsers.length === 0 ? (
               <tr>
                 <td colSpan={5} className="px-6 py-8 text-center text-gray-500">
-                  {users.length === 0
-                    ? 'Aucun utilisateur trouvé. Créez une table "user_profiles" dans Supabase pour stocker les profils utilisateurs.'
-                    : 'Aucun utilisateur ne correspond à votre recherche'}
+                  {error ? (
+                    <div className="space-y-2">
+                      <p className="font-semibold text-red-600">{error}</p>
+                      {error.includes('RLS') && (
+                        <p className="text-sm text-gray-600 mt-2">
+                          Exécutez ce SQL dans Supabase pour créer la politique :
+                          <code className="block mt-2 p-2 bg-gray-100 rounded text-xs text-left">
+                            CREATE POLICY "Authenticated users can read all profiles" ON user_profiles<br/>
+                            &nbsp;&nbsp;FOR SELECT USING (auth.role() = 'authenticated');
+                          </code>
+                        </p>
+                      )}
+                    </div>
+                  ) : users.length === 0 ? (
+                    'Aucun utilisateur trouvé. Les utilisateurs sont créés automatiquement lors de l\'inscription.'
+                  ) : (
+                    'Aucun utilisateur ne correspond à votre recherche'
+                  )}
                 </td>
               </tr>
             ) : (

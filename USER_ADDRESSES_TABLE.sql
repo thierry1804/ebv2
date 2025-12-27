@@ -51,6 +51,10 @@ ALTER TABLE user_addresses ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Users can view their own addresses" ON user_addresses
   FOR SELECT USING (user_id = auth.uid());
 
+-- Politique pour que les utilisateurs authentifiés puissent voir toutes les adresses (pour l'admin)
+CREATE POLICY "Authenticated users can view all addresses" ON user_addresses
+  FOR SELECT USING (auth.role() = 'authenticated');
+
 -- Politique pour que les utilisateurs puissent créer leurs propres adresses
 CREATE POLICY "Users can create their own addresses" ON user_addresses
   FOR INSERT WITH CHECK (user_id = auth.uid());
