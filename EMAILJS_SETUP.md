@@ -60,3 +60,4 @@ Une fois configuré, testez le formulaire de contact sur la page `/contact`. Vou
 - Pour plus d'emails, vous devrez passer à un plan payant
 - Les emails sont envoyés directement depuis le navigateur (pas de backend nécessaire)
 
+

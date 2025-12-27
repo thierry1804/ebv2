@@ -124,11 +124,17 @@ export function useProducts() {
 
   // Filtrer les produits selon les catégories actives
   const filteredProducts = useMemo(() => {
-    // Filtrer uniquement les produits dont la catégorie est active
+    // Si les catégories sont en cours de chargement, ou s'il n'y a pas de catégories actives,
+    // retourner tous les produits pour éviter une page vide
+    if (categoriesLoading || categories.length === 0 || activeCategoryNames.size === 0) {
+      return products;
+    }
+    
+    // Sinon, filtrer uniquement les produits dont la catégorie est active
     return products.filter((product) => {
       return activeCategoryNames.has(product.category);
     });
-  }, [products, activeCategoryNames]);
+  }, [products, activeCategoryNames, categoriesLoading, categories.length]);
 
   return {
     products: filteredProducts,

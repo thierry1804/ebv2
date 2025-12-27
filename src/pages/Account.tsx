@@ -1,34 +1,140 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useWishlist } from '../context/WishlistContext';
-import { useOrders } from '../hooks/useOrders';
+import { useAddresses } from '../hooks/useAddresses';
 import { Button } from '../components/ui/Button';
 import { ProductCard } from '../components/product/ProductCard';
 import { Loading } from '../components/ui/Loading';
-import { formatPrice } from '../utils/formatters';
-import { Order } from '../types';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { Address } from '../types';
 
-type Tab = 'profile' | 'orders' | 'addresses' | 'wishlist' | 'settings';
+type Tab = 'profile' | 'addresses' | 'wishlist' | 'settings';
 
 export default function Account() {
   const { user, isAuthenticated, logout } = useAuth();
   const { items: wishlistItems } = useWishlist();
-  const { getUserOrders, isLoading: isLoadingOrders } = useOrders();
+  const { addresses, isLoading: isLoadingAddresses, error: addressesError, getUserAddresses, createAddress, updateAddress, deleteAddress, setAddresses } = useAddresses();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<Tab>('profile');
-  const [orders, setOrders] = useState<Order[]>([]);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [editingAddress, setEditingAddress] = useState<Address | null>(null);
+  const [formData, setFormData] = useState<Partial<Address>>({
+    label: '',
+    firstName: user?.firstName || '',
+    lastName: user?.lastName || '',
+    street: '',
+    city: '',
+    postalCode: '',
+    country: 'Madagascar',
+    phone: user?.phone || '',
+    isDefault: false,
+  });
 
-  // Charger les commandes quand l'onglet orders est actif
+  // Charger les adresses quand l'onglet addresses est actif
   useEffect(() => {
-    if (activeTab === 'orders' && user?.id && orders.length === 0) {
-      loadOrders();
+    if (activeTab === 'addresses' && user?.id && isAuthenticated) {
+      loadAddresses();
     }
-  }, [activeTab, user?.id]);
+  }, [activeTab, user?.id, isAuthenticated]);
 
-  const loadOrders = async () => {
+  const loadAddresses = async () => {
     if (!user?.id) return;
-    const userOrders = await getUserOrders(user.id);
-    setOrders(userOrders);
+    const userAddresses = await getUserAddresses(user.id);
+    setAddresses(userAddresses);
+  };
+
+  const handleAddAddress = () => {
+    setFormData({
+      label: '',
+      firstName: user?.firstName || '',
+      lastName: user?.lastName || '',
+      street: '',
+      city: '',
+      postalCode: '',
+      country: 'Madagascar',
+      phone: user?.phone || '',
+      isDefault: false,
+    });
+    setEditingAddress(null);
+    setShowAddForm(true);
+  };
+
+  const handleEditAddress = (address: Address) => {
+    setFormData({
+      label: address.label,
+      firstName: address.firstName,
+      lastName: address.lastName,
+      street: address.street,
+      city: address.city,
+      postalCode: address.postalCode,
+      country: address.country,
+      phone: address.phone,
+      isDefault: address.isDefault || false,
+    });
+    setEditingAddress(address);
+    setShowAddForm(true);
+  };
+
+  const handleCancelForm = () => {
+    setShowAddForm(false);
+    setEditingAddress(null);
+    setFormData({
+      label: '',
+      firstName: user?.firstName || '',
+      lastName: user?.lastName || '',
+      street: '',
+      city: '',
+      postalCode: '',
+      country: 'Madagascar',
+      phone: user?.phone || '',
+      isDefault: false,
+    });
+  };
+
+  const handleSubmitAddress = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user?.id) return;
+
+    if (!formData.label || !formData.firstName || !formData.lastName || !formData.street || !formData.city || !formData.phone) {
+      alert('Veuillez remplir tous les champs obligatoires');
+      return;
+    }
+
+    const addressData: Omit<Address, 'id'> = {
+      label: formData.label!,
+      firstName: formData.firstName!,
+      lastName: formData.lastName!,
+      street: formData.street!,
+      city: formData.city!,
+      postalCode: formData.postalCode || '',
+      country: formData.country || 'Madagascar',
+      phone: formData.phone!,
+      isDefault: formData.isDefault || false,
+    };
+
+    if (editingAddress) {
+      const updated = await updateAddress(editingAddress.id, user.id, addressData);
+      if (updated) {
+        await loadAddresses();
+        handleCancelForm();
+      }
+    } else {
+      const created = await createAddress(user.id, addressData);
+      if (created) {
+        await loadAddresses();
+        handleCancelForm();
+      }
+    }
+  };
+
+  const handleDeleteAddress = async (addressId: string) => {
+    if (!user?.id) return;
+    if (!confirm('Êtes-vous sûr de vouloir supprimer cette adresse ?')) return;
+
+    const success = await deleteAddress(addressId, user.id);
+    if (success) {
+      await loadAddresses();
+    }
   };
 
   if (!isAuthenticated) {
@@ -55,9 +161,26 @@ export default function Account() {
         {/* Menu latéral */}
         <aside className="lg:col-span-1">
           <nav className="bg-white rounded-lg p-4 shadow-sm space-y-2">
+            <button
+              onClick={() => {
+                setActiveTab('profile');
+                navigate('/compte');
+              }}
+              className={`w-full text-left px-4 py-2 rounded-lg transition-colors ${
+                activeTab === 'profile'
+                  ? 'bg-primary text-white'
+                  : 'text-text-dark hover:bg-neutral-support'
+              }`}
+            >
+              Mon profil
+            </button>
+            <button
+              onClick={() => navigate('/compte/mes-commandes')}
+              className="w-full text-left px-4 py-2 rounded-lg transition-colors text-text-dark hover:bg-neutral-support"
+            >
+              Mes commandes
+            </button>
             {[
-              { id: 'profile', label: 'Mon profil' },
-              { id: 'orders', label: 'Mes commandes' },
               { id: 'addresses', label: 'Mes adresses' },
               { id: 'wishlist', label: 'Ma wishlist' },
               { id: 'settings', label: 'Paramètres' },
@@ -136,131 +259,222 @@ export default function Account() {
               </div>
             )}
 
-            {activeTab === 'orders' && (
+
+            {activeTab === 'addresses' && (
               <div>
-                <h2 className="text-2xl font-heading font-semibold text-text-dark mb-6">
-                  Mes commandes
-                </h2>
-                {isLoadingOrders ? (
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-2xl font-heading font-semibold text-text-dark">
+                    Mes adresses
+                  </h2>
+                  {!showAddForm && (
+                    <Button variant="outline" onClick={handleAddAddress}>
+                      Ajouter une adresse
+                    </Button>
+                  )}
+                </div>
+
+                {showAddForm && (
+                  <form onSubmit={handleSubmitAddress} className="mb-6 bg-neutral-support/30 p-6 rounded-lg">
+                    <h3 className="text-lg font-semibold text-text-dark mb-4">
+                      {editingAddress ? 'Modifier l\'adresse' : 'Nouvelle adresse'}
+                    </h3>
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-text-dark mb-2">
+                          Libellé (ex: Domicile, Bureau) *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={formData.label}
+                          onChange={(e) => setFormData({ ...formData, label: e.target.value })}
+                          className="w-full px-4 py-2 border-2 border-neutral-support rounded-lg focus:outline-none focus:border-primary"
+                          placeholder="Domicile"
+                        />
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-text-dark mb-2">
+                            Prénom *
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={formData.firstName}
+                            onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
+                            className="w-full px-4 py-2 border-2 border-neutral-support rounded-lg focus:outline-none focus:border-primary"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-text-dark mb-2">
+                            Nom *
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={formData.lastName}
+                            onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
+                            className="w-full px-4 py-2 border-2 border-neutral-support rounded-lg focus:outline-none focus:border-primary"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-text-dark mb-2">
+                          Adresse *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={formData.street}
+                          onChange={(e) => setFormData({ ...formData, street: e.target.value })}
+                          className="w-full px-4 py-2 border-2 border-neutral-support rounded-lg focus:outline-none focus:border-primary"
+                          placeholder="Rue, numéro, quartier"
+                        />
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-text-dark mb-2">
+                            Ville *
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={formData.city}
+                            onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+                            className="w-full px-4 py-2 border-2 border-neutral-support rounded-lg focus:outline-none focus:border-primary"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-text-dark mb-2">
+                            Code postal
+                          </label>
+                          <input
+                            type="text"
+                            value={formData.postalCode}
+                            onChange={(e) => setFormData({ ...formData, postalCode: e.target.value })}
+                            className="w-full px-4 py-2 border-2 border-neutral-support rounded-lg focus:outline-none focus:border-primary"
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-text-dark mb-2">
+                            Pays *
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={formData.country}
+                            onChange={(e) => setFormData({ ...formData, country: e.target.value })}
+                            className="w-full px-4 py-2 border-2 border-neutral-support rounded-lg focus:outline-none focus:border-primary"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-text-dark mb-2">
+                            Téléphone *
+                          </label>
+                          <input
+                            type="tel"
+                            required
+                            value={formData.phone}
+                            onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                            className="w-full px-4 py-2 border-2 border-neutral-support rounded-lg focus:outline-none focus:border-primary"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="flex items-center gap-3 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={formData.isDefault || false}
+                            onChange={(e) => setFormData({ ...formData, isDefault: e.target.checked })}
+                            className="text-primary"
+                          />
+                          <span>Définir comme adresse par défaut</span>
+                        </label>
+                      </div>
+                      <div className="flex gap-4">
+                        <Button type="submit" variant="primary" disabled={isLoadingAddresses}>
+                          {editingAddress ? 'Enregistrer' : 'Ajouter'}
+                        </Button>
+                        <Button type="button" variant="outline" onClick={handleCancelForm}>
+                          Annuler
+                        </Button>
+                      </div>
+                    </div>
+                  </form>
+                )}
+
+                {addressesError && (
+                  <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-600">
+                    {addressesError}
+                  </div>
+                )}
+
+                {isLoadingAddresses ? (
                   <div className="flex justify-center py-8">
                     <Loading />
                   </div>
-                ) : orders.length === 0 ? (
-                  <p className="text-text-dark/80">
-                    Vous n'avez pas encore passé de commande.
-                  </p>
+                ) : addresses.length === 0 && !showAddForm ? (
+                  <div className="text-center py-8">
+                    <p className="text-text-dark/80 mb-4">
+                      Vous n'avez pas encore enregistré d'adresse.
+                    </p>
+                    <Button variant="outline" onClick={handleAddAddress}>
+                      Ajouter une adresse
+                    </Button>
+                  </div>
                 ) : (
                   <div className="space-y-4">
-                    {orders.map((order) => (
+                    {addresses.map((address) => (
                       <div
-                        key={order.id}
+                        key={address.id}
                         className="border-2 border-neutral-support rounded-lg p-4 hover:border-primary transition-colors"
                       >
-                        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                        <div className="flex items-start justify-between">
                           <div className="flex-1">
-                            <div className="flex items-center gap-4 mb-2">
+                            <div className="flex items-center gap-3 mb-2">
                               <h3 className="text-lg font-semibold text-text-dark">
-                                Commande {order.orderNumber}
+                                {address.label}
                               </h3>
-                              <span
-                                className={`px-3 py-1 rounded-full text-sm font-medium ${
-                                  order.status === 'pending'
-                                    ? 'bg-yellow-100 text-yellow-800'
-                                    : order.status === 'confirmed'
-                                    ? 'bg-blue-100 text-blue-800'
-                                    : order.status === 'shipped'
-                                    ? 'bg-purple-100 text-purple-800'
-                                    : order.status === 'delivered'
-                                    ? 'bg-green-100 text-green-800'
-                                    : 'bg-red-100 text-red-800'
-                                }`}
-                              >
-                                {order.status === 'pending'
-                                  ? 'En attente'
-                                  : order.status === 'confirmed'
-                                  ? 'Confirmée'
-                                  : order.status === 'shipped'
-                                  ? 'Expédiée'
-                                  : order.status === 'delivered'
-                                  ? 'Livrée'
-                                  : 'Annulée'}
-                              </span>
-                            </div>
-                            <p className="text-sm text-text-dark/80 mb-2">
-                              Passée le {new Date(order.createdAt).toLocaleDateString('fr-FR', {
-                                year: 'numeric',
-                                month: 'long',
-                                day: 'numeric',
-                              })}
-                            </p>
-                            <p className="text-sm text-text-dark/80">
-                              {order.items.length} article{order.items.length > 1 ? 's' : ''}
-                            </p>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-lg font-bold text-text-dark mb-1">
-                              {formatPrice(order.total)}
-                            </p>
-                            <p className="text-xs text-text-dark/60">
-                              {order.paymentMethod === 'cash_on_delivery'
-                                ? 'Paiement à la livraison'
-                                : 'Mobile Money'}
-                            </p>
-                          </div>
-                        </div>
-                        {order.items.length > 0 && (
-                          <div className="mt-4 pt-4 border-t border-neutral-support">
-                            <div className="space-y-2">
-                              {order.items.slice(0, 3).map((item) => (
-                                <div key={item.id} className="flex items-center gap-3">
-                                  <div className="w-12 h-12 rounded bg-neutral-support overflow-hidden">
-                                    <img
-                                      src={item.product.images[0]}
-                                      alt={item.product.name}
-                                      className="w-full h-full object-cover"
-                                    />
-                                  </div>
-                                  <div className="flex-1">
-                                    <p className="text-sm font-medium text-text-dark">
-                                      {item.product.name}
-                                    </p>
-                                    <p className="text-xs text-text-dark/80">
-                                      {item.size && `${item.size}`}
-                                      {item.size && item.color && ' • '}
-                                      {item.color && `${item.color}`}
-                                      {(item.size || item.color) && ' • '}
-                                      Quantité: {item.quantity}
-                                    </p>
-                                  </div>
-                                  <p className="text-sm font-semibold text-text-dark">
-                                    {formatPrice(item.price * item.quantity)}
-                                  </p>
-                                </div>
-                              ))}
-                              {order.items.length > 3 && (
-                                <p className="text-sm text-text-dark/80 text-center pt-2">
-                                  + {order.items.length - 3} autre{order.items.length - 3 > 1 ? 's' : ''} article{order.items.length - 3 > 1 ? 's' : ''}
-                                </p>
+                              {address.isDefault && (
+                                <span className="px-2 py-1 bg-primary text-white text-xs rounded-full">
+                                  Par défaut
+                                </span>
                               )}
                             </div>
+                            <p className="text-text-dark/80 mb-1">
+                              {address.firstName} {address.lastName}
+                            </p>
+                            <p className="text-text-dark/80 mb-1">{address.street}</p>
+                            <p className="text-text-dark/80 mb-1">
+                              {address.postalCode && `${address.postalCode} `}
+                              {address.city}
+                            </p>
+                            <p className="text-text-dark/80 mb-1">{address.country}</p>
+                            <p className="text-text-dark/80">Tél: {address.phone}</p>
                           </div>
-                        )}
+                          <div className="flex gap-2">
+                            <Button
+                              variant="outline"
+                              onClick={() => handleEditAddress(address)}
+                              className="text-sm"
+                            >
+                              Modifier
+                            </Button>
+                            <Button
+                              variant="outline"
+                              onClick={() => handleDeleteAddress(address.id)}
+                              className="text-sm text-red-600 hover:bg-red-50"
+                            >
+                              Supprimer
+                            </Button>
+                          </div>
+                        </div>
                       </div>
                     ))}
                   </div>
                 )}
-              </div>
-            )}
-
-            {activeTab === 'addresses' && (
-              <div>
-                <h2 className="text-2xl font-heading font-semibold text-text-dark mb-6">
-                  Mes adresses
-                </h2>
-                <p className="text-text-dark/80 mb-4">
-                  Vous n'avez pas encore enregistré d'adresse.
-                </p>
-                <Button variant="outline">Ajouter une adresse</Button>
               </div>
             )}
 

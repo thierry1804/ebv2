@@ -96,6 +96,14 @@ export function useOrders() {
       setIsLoading(true);
       setError(null);
 
+      // Valider que l'ID est un UUID valide
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(userId)) {
+        console.error('ID utilisateur invalide (pas un UUID):', userId);
+        setError('ID utilisateur invalide');
+        return [];
+      }
+
       const { data, error: supabaseError } = await supabase
         .from('orders')
         .select('*')
