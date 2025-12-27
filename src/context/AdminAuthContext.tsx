@@ -13,6 +13,14 @@ interface AdminAuthContextType {
 
 const AdminAuthContext = createContext<AdminAuthContextType | undefined>(undefined);
 
+const ADMIN_EMAIL = 'admin@eshopbyvalsue.mg';
+
+// Fonction pour vérifier si un utilisateur est admin
+const isAdminUser = (user: User | null): boolean => {
+  if (!user || !user.email) return false;
+  return user.email.toLowerCase() === ADMIN_EMAIL.toLowerCase();
+};
+
 export function AdminAuthProvider({ children }: { children: ReactNode }) {
   const [adminUser, setAdminUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -38,7 +46,16 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
         const { data: { session } } = await supabase.auth.getSession();
 
         if (isMounted) {
-          setAdminUser(session?.user ?? null);
+          // Vérifier que l'utilisateur est bien l'admin
+          if (session?.user && isAdminUser(session.user)) {
+            setAdminUser(session.user);
+          } else {
+            setAdminUser(null);
+            // Déconnecter si l'utilisateur n'est pas admin
+            if (session?.user) {
+              await supabase.auth.signOut();
+            }
+          }
           setIsLoading(false);
           isInitialized = true;
         }
@@ -52,7 +69,16 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
 
           // Mettre à jour uniquement si le composant est toujours monté
           if (isMounted) {
-            setAdminUser(session?.user ?? null);
+            // Vérifier que l'utilisateur est bien l'admin
+            if (session?.user && isAdminUser(session.user)) {
+              setAdminUser(session.user);
+            } else {
+              setAdminUser(null);
+              // Déconnecter si l'utilisateur n'est pas admin
+              if (session?.user && event !== 'SIGNED_OUT') {
+                await supabase.auth.signOut();
+              }
+            }
           }
         });
 
@@ -117,11 +143,17 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
       }
 
       if (data.user) {
-        // Vérifier si l'utilisateur est admin (via metadata ou table séparée)
-        // Pour l'instant, on accepte tous les utilisateurs authentifiés
-        setAdminUser(data.user);
-        toast.success('Connexion réussie');
-        return true;
+        // Vérifier que l'utilisateur est bien l'admin
+        if (isAdminUser(data.user)) {
+          setAdminUser(data.user);
+          toast.success('Connexion réussie');
+          return true;
+        } else {
+          // Déconnecter l'utilisateur s'il n'est pas admin
+          await supabase.auth.signOut();
+          toast.error('Accès refusé. Seul l\'administrateur peut accéder à cette section.');
+          return false;
+        }
       }
 
       return false;
@@ -162,7 +194,7 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
         isLoading,
         login,
         logout,
-        isAuthenticated: !!adminUser,
+        isAuthenticated: !!adminUser && isAdminUser(adminUser),
       }}
     >
       {children}

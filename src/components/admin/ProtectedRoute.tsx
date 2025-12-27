@@ -8,7 +8,7 @@ interface ProtectedRouteProps {
 }
 
 export function ProtectedRoute({ children }: ProtectedRouteProps) {
-  const { isAuthenticated, isLoading } = useAdminAuth();
+  const { isAuthenticated, isLoading, adminUser } = useAdminAuth();
 
   if (isLoading) {
     return (
@@ -18,7 +18,11 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
     );
   }
 
-  if (!isAuthenticated) {
+  // Vérifier que l'utilisateur est authentifié ET qu'il est l'admin
+  const ADMIN_EMAIL = 'admin@eshopbyvalsue.mg';
+  const isAdmin = adminUser?.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase();
+
+  if (!isAuthenticated || !isAdmin) {
     return <Navigate to="/admin/login" replace />;
   }
 
