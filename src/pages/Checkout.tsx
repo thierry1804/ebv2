@@ -37,11 +37,12 @@ export default function Checkout() {
   const [promoDiscount, setPromoDiscount] = useState(0);
   const [promoApplied, setPromoApplied] = useState(false);
   const [promoCodeId, setPromoCodeId] = useState<string | null>(null);
+  const [deliveryInstructions, setDeliveryInstructions] = useState('');
 
   const shippingCost = getSubtotal() >= 200000 ? 0 : 10000;
   const subtotal = getSubtotal();
   const discount = promoDiscount;
-  const total = subtotal - discount + shippingCost;
+  const total = subtotal - discount; // Livraison en sus, non incluse dans le total
 
   // Charger l'adresse sauvegardée depuis localStorage
   useEffect(() => {
@@ -53,6 +54,10 @@ export default function Checkout() {
           ...prev,
           ...address,
         }));
+        // Charger aussi les instructions de livraison si présentes
+        if (address.deliveryInstructions) {
+          setDeliveryInstructions(address.deliveryInstructions);
+        }
       } catch (e) {
         console.error('Erreur lors du chargement de l\'adresse sauvegardée', e);
       }
@@ -94,8 +99,12 @@ export default function Checkout() {
       shippingAddress.city &&
       shippingAddress.phone
     ) {
-      // Sauvegarder l'adresse dans localStorage
-      localStorage.setItem('saved_shipping_address', JSON.stringify(shippingAddress));
+      // Sauvegarder l'adresse et les instructions dans localStorage
+      const addressToSave = {
+        ...shippingAddress,
+        ...(deliveryInstructions.trim() && { deliveryInstructions: deliveryInstructions.trim() }),
+      };
+      localStorage.setItem('saved_shipping_address', JSON.stringify(addressToSave));
       setStep('payment');
     } else {
       toast.error('Veuillez remplir tous les champs obligatoires');
@@ -126,8 +135,8 @@ export default function Checkout() {
     setIsSubmitting(true);
 
     try {
-      // Préparer l'adresse complète pour la commande
-      const completeAddress: Address = {
+      // Préparer l'adresse complète pour la commande (avec instructions de livraison)
+      const completeAddress: Address & { deliveryInstructions?: string } = {
         id: '',
         label: 'Adresse de livraison',
         firstName: shippingAddress.firstName!,
@@ -137,16 +146,18 @@ export default function Checkout() {
         postalCode: shippingAddress.postalCode || '',
         country: shippingAddress.country || 'Madagascar',
         phone: shippingAddress.phone!,
+        ...(deliveryInstructions.trim() && { deliveryInstructions: deliveryInstructions.trim() }),
       };
 
       // Créer la commande dans Supabase
+      // Note: shippingCost est passé pour information mais n'est pas inclus dans total
       const order = await createOrder(
         user?.id || null,
         items,
         completeAddress,
         paymentMethod,
         subtotal,
-        shippingCost,
+        shippingCost, // Conservé pour information mais non inclus dans total
         total,
         orderNumber,
         promoCodeId,
@@ -175,8 +186,14 @@ export default function Checkout() {
     }
   };
 
+  // Rediriger vers le panier si vide (sauf en confirmation)
+  useEffect(() => {
+    if (items.length === 0 && step !== 'confirmation') {
+      navigate('/panier');
+    }
+  }, [items.length, step, navigate]);
+
   if (items.length === 0 && step !== 'confirmation') {
-    navigate('/panier');
     return null;
   }
 
@@ -339,6 +356,21 @@ export default function Checkout() {
                   className="w-full px-4 py-2 border-2 border-neutral-support rounded-lg bg-neutral-light"
                 />
               </div>
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-text-dark mb-2">
+                  Indications de livraison (optionnelles mais fortement recommandées)
+                </label>
+                <textarea
+                  value={deliveryInstructions}
+                  onChange={(e) => setDeliveryInstructions(e.target.value)}
+                  rows={3}
+                  className="w-full px-4 py-2 border-2 border-neutral-support rounded-lg focus:outline-none focus:border-primary resize-none"
+                  placeholder="Ex: Appeler avant de livrer, code d'accès, étage, point de repère, etc."
+                />
+                <p className="text-xs text-text-dark/60 mt-1">
+                  Ajoutez des indications précises pour faciliter la livraison
+                </p>
+              </div>
               <Button type="submit" variant="primary" size="lg" className="w-full">
                 Continuer vers le paiement
               </Button>
@@ -490,21 +522,13 @@ export default function Checkout() {
                 )}
                 <div className="flex justify-between text-text-dark/80">
                   <span>Livraison</span>
-                  <span>
-                    {shippingCost === 0 ? (
-                      <span className="text-green-600 font-semibold">Gratuite</span>
-                    ) : (
-                      formatPrice(shippingCost)
-                    )}
-                  </span>
+                  <span className="text-text-dark/60 italic">En sus</span>
                 </div>
-                {subtotal < 200000 && (
-                  <div className="p-2 bg-accent/10 border border-accent rounded-lg">
-                    <p className="text-sm text-accent font-medium">
-                      Ajoutez {formatPrice(200000 - subtotal)} pour la livraison gratuite !
-                    </p>
-                  </div>
-                )}
+                <div className="p-2 bg-blue-50 border border-blue-200 rounded-lg">
+                  <p className="text-sm text-blue-800">
+                    Le coût de livraison sera calculé et facturé séparément lors de la livraison.
+                  </p>
+                </div>
                 <div className="flex justify-between text-lg font-bold text-text-dark pt-2 border-t border-neutral-support">
                   <span>Total</span>
                   <span>{formatPrice(total)}</span>

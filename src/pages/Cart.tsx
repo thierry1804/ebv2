@@ -137,25 +137,19 @@ export default function Cart() {
               </div>
               <div className="flex justify-between text-text-dark/80">
                 <span>Livraison</span>
-                <span className="font-medium">
-                  {shippingCost === 0 ? (
-                    <span className="text-green-600">Gratuite</span>
-                  ) : (
-                    formatPrice(shippingCost)
-                  )}
-                </span>
+                <span className="font-medium text-text-dark/60 italic">En sus</span>
               </div>
-              {getSubtotal() < 200000 && (
-                <p className="text-sm text-accent">
-                  Ajoutez {formatPrice(200000 - getSubtotal())} pour la livraison gratuite
+              <div className="p-2 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-sm text-blue-800">
+                  Le coût de livraison sera calculé et facturé séparément lors de la livraison.
                 </p>
-              )}
+              </div>
             </div>
 
             <div className="border-t border-neutral-support pt-4 mb-6">
               <div className="flex justify-between text-lg font-bold text-text-dark">
                 <span>Total</span>
-                <span>{formatPrice(getTotal(shippingCost))}</span>
+                <span>{formatPrice(getSubtotal())}</span>
               </div>
             </div>
 
