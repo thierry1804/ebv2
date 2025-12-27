@@ -65,7 +65,7 @@ export default function Checkout() {
       return;
     }
 
-    const result = await validatePromoCode(promoCode, user?.id || null, subtotal);
+    const result = await validatePromoCode(promoCode, user?.id || null, subtotal, items);
 
     if (result.isValid && result.discountAmount > 0) {
       setPromoDiscount(result.discountAmount);

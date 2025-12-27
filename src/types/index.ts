@@ -243,6 +243,7 @@ export interface PromoCode {
   code: string;
   type: 'percentage' | 'fixed';
   value: number;
+  applicationScope: 'item' | 'total'; // Par article ou sur le total
   validFrom?: string;
   validUntil?: string;
   usageLimitPerUser: number;
@@ -258,6 +259,7 @@ export interface DatabasePromoCode {
   code: string;
   type: 'percentage' | 'fixed';
   value: number;
+  application_scope: 'item' | 'total';
   valid_from: string | null;
   valid_until: string | null;
   usage_limit_per_user: number;
@@ -276,6 +278,7 @@ export interface PromoCodeValidationResult {
   promoCodeId?: string;
   promoCodeType?: 'percentage' | 'fixed';
   promoCodeValue?: number;
+  applicationScope?: 'item' | 'total';
 }
 
 export interface PromoCodeUsage {

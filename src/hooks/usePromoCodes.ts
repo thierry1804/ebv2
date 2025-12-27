@@ -12,7 +12,8 @@ export function usePromoCodes() {
   const validatePromoCode = async (
     code: string,
     userId: string | null,
-    subtotal: number
+    subtotal: number,
+    items?: any[] // Items du panier pour calculer la réduction par article
   ): Promise<PromoCodeValidationResult> => {
     try {
       setIsLoading(true);
@@ -26,11 +27,21 @@ export function usePromoCodes() {
         };
       }
 
+      // Préparer les items pour le calcul par article
+      const itemsJson = items && items.length > 0 
+        ? items.map(item => ({
+            productId: item.productId,
+            quantity: item.quantity,
+            price: item.price
+          }))
+        : null;
+
       // Appeler la fonction PostgreSQL pour valider le code
       const { data, error: supabaseError } = await supabase.rpc('validate_promo_code', {
         p_code: code.toUpperCase().trim(),
         p_user_id: userId || null,
         p_subtotal: subtotal,
+        p_items: itemsJson ? JSON.stringify(itemsJson) : null,
       });
 
       if (supabaseError) {
@@ -67,6 +78,7 @@ export function usePromoCodes() {
         promoCodeId: result.promo_code_id,
         promoCodeType: result.promo_code_type,
         promoCodeValue: parseFloat(result.promo_code_value) || 0,
+        applicationScope: result.application_scope || 'total',
       };
     } catch (err: any) {
       console.error('Erreur lors de la validation du code promo:', err);
@@ -113,6 +125,7 @@ export function usePromoCodes() {
         code: dbPromoCode.code,
         type: dbPromoCode.type,
         value: parseFloat(dbPromoCode.value.toString()),
+        applicationScope: dbPromoCode.application_scope || 'total',
         validFrom: dbPromoCode.valid_from || undefined,
         validUntil: dbPromoCode.valid_until || undefined,
         usageLimitPerUser: dbPromoCode.usage_limit_per_user,

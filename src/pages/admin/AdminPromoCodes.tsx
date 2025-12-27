@@ -18,6 +18,7 @@ export default function AdminPromoCodes() {
     code: '',
     type: 'percentage' as 'percentage' | 'fixed',
     value: '',
+    applicationScope: 'total' as 'item' | 'total',
     validFrom: '',
     validUntil: '',
     usageLimitPerUser: '1',
@@ -54,6 +55,7 @@ export default function AdminPromoCodes() {
           code: p.code,
           type: p.type,
           value: parseFloat(p.value.toString()),
+          applicationScope: p.application_scope || 'total',
           validFrom: p.valid_from || undefined,
           validUntil: p.valid_until || undefined,
           usageLimitPerUser: p.usage_limit_per_user,
@@ -95,6 +97,7 @@ export default function AdminPromoCodes() {
       code: '',
       type: 'percentage',
       value: '',
+      applicationScope: 'total',
       validFrom: '',
       validUntil: '',
       usageLimitPerUser: '1',
@@ -111,6 +114,7 @@ export default function AdminPromoCodes() {
       code: promoCode.code,
       type: promoCode.type,
       value: promoCode.value.toString(),
+      applicationScope: promoCode.applicationScope || 'total',
       validFrom: promoCode.validFrom ? promoCode.validFrom.split('T')[0] : '',
       validUntil: promoCode.validUntil ? promoCode.validUntil.split('T')[0] : '',
       usageLimitPerUser: promoCode.usageLimitPerUser.toString(),
@@ -147,6 +151,7 @@ export default function AdminPromoCodes() {
         code: formData.code.toUpperCase().trim(),
         type: formData.type,
         value: parseFloat(formData.value),
+        application_scope: formData.applicationScope,
         valid_from: formData.validFrom ? new Date(formData.validFrom).toISOString() : null,
         valid_until: formData.validUntil ? new Date(formData.validUntil + 'T23:59:59').toISOString() : null,
         usage_limit_per_user: parseInt(formData.usageLimitPerUser) || 1,
@@ -292,6 +297,11 @@ export default function AdminPromoCodes() {
                         </span>
                         <span className="text-sm text-gray-500">de réduction</span>
                       </div>
+                      <div className="text-xs text-gray-500 mb-2">
+                        {promoCode.applicationScope === 'item' 
+                          ? '📦 Appliqué par article' 
+                          : '💰 Appliqué sur le total'}
+                      </div>
                       {promoCode.description && (
                         <p className="text-sm text-gray-600 mt-2">{promoCode.description}</p>
                       )}
@@ -396,6 +406,24 @@ export default function AdminPromoCodes() {
               <option value="percentage">Pourcentage</option>
               <option value="fixed">Montant fixe</option>
             </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Application *</label>
+            <select
+              value={formData.applicationScope}
+              onChange={(e) =>
+                setFormData({ ...formData, applicationScope: e.target.value as 'item' | 'total' })
+              }
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-secondary"
+            >
+              <option value="total">Sur le total de l'achat</option>
+              <option value="item">Par article</option>
+            </select>
+            <p className="text-xs text-gray-500 mt-1">
+              {formData.applicationScope === 'item'
+                ? 'La réduction sera appliquée sur chaque article du panier'
+                : 'La réduction sera appliquée sur le montant total de la commande'}
+            </p>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
