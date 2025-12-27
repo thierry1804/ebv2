@@ -474,10 +474,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       
       // Nettoyer l'état utilisateur
+      const userId = user?.id;
       setUser(null);
       
       // Nettoyer le cache du profil
       profileCache.clear();
+      
+      // Nettoyer le localStorage spécifique à l'utilisateur
+      if (userId) {
+        try {
+          localStorage.removeItem(`eshop_cart_${userId}`);
+          localStorage.removeItem(`eshop_wishlist_${userId}`);
+        } catch (storageError) {
+          console.error('Erreur lors du nettoyage du localStorage:', storageError);
+        }
+      }
       
       toast.success('Déconnexion réussie');
     } catch (error) {

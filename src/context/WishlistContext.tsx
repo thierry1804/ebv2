@@ -22,6 +22,7 @@ export function WishlistProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const isInitialized = useRef(false);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const previousUserIdRef = useRef<string | null>(null);
 
   // Sauvegarder la wishlist en base de données
   const saveWishlistToDatabase = useCallback(async (wishlistItems: Product[]) => {
@@ -42,6 +43,26 @@ export function WishlistProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.error('Erreur lors de la sauvegarde de la wishlist:', error);
+    }
+  }, [isAuthenticated, user?.id]);
+
+  // Vider la wishlist lors de la déconnexion ou changement d'utilisateur
+  useEffect(() => {
+    if (isInitialized.current) {
+      const currentUserId = user?.id || null;
+      
+      // Si on passe d'un utilisateur connecté à déconnecté, ou changement d'utilisateur
+      if (previousUserIdRef.current !== null && currentUserId === null) {
+        // Déconnexion : vider la wishlist
+        setItems([]);
+        isInitialized.current = false;
+      } else if (previousUserIdRef.current !== currentUserId && previousUserIdRef.current !== null) {
+        // Changement d'utilisateur : vider la wishlist
+        setItems([]);
+        isInitialized.current = false;
+      }
+      
+      previousUserIdRef.current = currentUserId;
     }
   }, [isAuthenticated, user?.id]);
 
@@ -71,11 +92,11 @@ export function WishlistProvider({ children }: { children: ReactNode }) {
 
           if (data?.items && Array.isArray(data.items) && data.items.length > 0) {
             setItems(data.items as Product[]);
-            // Synchroniser avec localStorage
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(data.items));
+            // Synchroniser avec localStorage (avec clé spécifique à l'utilisateur)
+            localStorage.setItem(`${STORAGE_KEY}_${user.id}`, JSON.stringify(data.items));
           } else {
             // Si pas de wishlist en base, vérifier localStorage et fusionner
-            const localWishlist = localStorage.getItem(STORAGE_KEY);
+            const localWishlist = localStorage.getItem(`${STORAGE_KEY}_${user.id}`);
             if (localWishlist) {
               const localItems = JSON.parse(localWishlist) as Product[];
               if (localItems.length > 0) {
@@ -90,7 +111,7 @@ export function WishlistProvider({ children }: { children: ReactNode }) {
             }
           }
         } else {
-          // Charger depuis localStorage
+          // Utilisateur non connecté : utiliser localStorage générique
           const stored = localStorage.getItem(STORAGE_KEY);
           if (stored) {
             setItems(JSON.parse(stored));
@@ -120,8 +141,12 @@ export function WishlistProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!isInitialized.current) return;
 
-    // Sauvegarder dans localStorage
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+    // Sauvegarder dans localStorage (avec clé spécifique si connecté)
+    if (isAuthenticated && user?.id) {
+      localStorage.setItem(`${STORAGE_KEY}_${user.id}`, JSON.stringify(items));
+    } else {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+    }
 
     // Sauvegarder en base (avec debounce de 500ms)
     if (saveTimeoutRef.current) {
