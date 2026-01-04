@@ -118,6 +118,11 @@ export function Footer() {
             <h3 className="font-heading font-semibold text-lg mb-4 text-secondary">Liens rapides</h3>
             <ul className="space-y-2 text-sm">
               <li>
+                <Link to="/" className="text-text-dark/90 hover:text-secondary font-medium transition-colors">
+                  Accueil
+                </Link>
+              </li>
+              <li>
                 <Link to="/boutique" className="text-text-dark/90 hover:text-secondary font-medium transition-colors">
                   Boutique
                 </Link>
@@ -194,7 +199,7 @@ export function Footer() {
         <div className="border-t border-neutral-support mt-8 pt-8">
           <div className="flex flex-col md:flex-row justify-between items-center gap-4 text-sm text-text-dark/80">
             <p>&copy; {new Date().getFullYear()} ByValsue. Tous droits réservés.</p>
-            <div className="flex gap-4">
+            <div className="flex gap-4 flex-wrap">
               <Link to="/mentions-legales" className="hover:text-secondary transition-colors">
                 Mentions légales
               </Link>
@@ -203,6 +208,9 @@ export function Footer() {
               </Link>
               <Link to="/confidentialite" className="hover:text-secondary transition-colors">
                 Confidentialité
+              </Link>
+              <Link to="/retours" className="hover:text-secondary transition-colors">
+                Retours
               </Link>
             </div>
           </div>

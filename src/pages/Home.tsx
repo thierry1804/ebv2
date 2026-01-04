@@ -177,6 +177,11 @@ export default function Home() {
         </div>
       )}
 
+      {/* H1 pour le SEO - visible mais discret */}
+      <div className="container mx-auto px-4">
+        <h1 className="sr-only">ByValsue - Mode Féminine Haut de Gamme à Madagascar</h1>
+      </div>
+
       {/* Catégories */}
       {categoriesConfig && categoriesConfig.isVisible !== false && categories.length > 0 && (
         <section className="container mx-auto px-4 mt-40">

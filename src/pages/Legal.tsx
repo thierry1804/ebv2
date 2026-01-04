@@ -1,4 +1,5 @@
 import { useLocation } from 'react-router-dom';
+import { SEO } from '../components/seo/SEO';
 
 const legalContent: Record<string, { title: string; content: string }> = {
   'mentions-legales': {
@@ -72,23 +73,114 @@ const legalContent: Record<string, { title: string; content: string }> = {
   },
 };
 
+const seoConfig: Record<string, {
+  title: string;
+  description: string;
+  keywords: string;
+  url: string;
+  structuredData: object;
+}> = {
+  'mentions-legales': {
+    title: 'Mentions Légales',
+    description: 'Mentions légales de ByValsue - Boutique en ligne de mode féminine à Madagascar. Informations sur l\'éditeur, l\'hébergement et les coordonnées de contact.',
+    keywords: 'mentions légales, ByValsue, boutique en ligne, Madagascar, éditeur, hébergement, contact',
+    url: '/mentions-legales',
+    structuredData: {
+      '@context': 'https://schema.org',
+      '@type': 'WebPage',
+      name: 'Mentions Légales - ByValsue',
+      description: 'Mentions légales de la boutique en ligne ByValsue',
+      url: 'https://eshopbyvalsue.mg/mentions-legales',
+      publisher: {
+        '@type': 'Organization',
+        name: 'ByValsue',
+        url: 'https://eshopbyvalsue.mg',
+      },
+    },
+  },
+  cgv: {
+    title: 'Conditions Générales de Vente',
+    description: 'Conditions générales de vente de ByValsue. Découvrez nos conditions de commande, paiement, livraison et retours pour votre achat en ligne de mode féminine.',
+    keywords: 'CGV, conditions générales de vente, ByValsue, commande, paiement, livraison, retours, e-commerce Madagascar',
+    url: '/cgv',
+    structuredData: {
+      '@context': 'https://schema.org',
+      '@type': 'WebPage',
+      name: 'Conditions Générales de Vente - ByValsue',
+      description: 'Conditions générales de vente de la boutique en ligne ByValsue',
+      url: 'https://eshopbyvalsue.mg/cgv',
+      publisher: {
+        '@type': 'Organization',
+        name: 'ByValsue',
+        url: 'https://eshopbyvalsue.mg',
+      },
+    },
+  },
+  confidentialite: {
+    title: 'Politique de Confidentialité',
+    description: 'Politique de confidentialité et protection des données personnelles de ByValsue. Découvrez comment nous collectons, utilisons et protégeons vos données.',
+    keywords: 'politique de confidentialité, protection des données, RGPD, vie privée, données personnelles, ByValsue, Madagascar',
+    url: '/confidentialite',
+    structuredData: {
+      '@context': 'https://schema.org',
+      '@type': 'WebPage',
+      name: 'Politique de Confidentialité - ByValsue',
+      description: 'Politique de confidentialité et protection des données personnelles de ByValsue',
+      url: 'https://eshopbyvalsue.mg/confidentialite',
+      publisher: {
+        '@type': 'Organization',
+        name: 'ByValsue',
+        url: 'https://eshopbyvalsue.mg',
+      },
+    },
+  },
+  retours: {
+    title: 'Politique de Retours',
+    description: 'Politique de retours et remboursements de ByValsue. Découvrez nos conditions de retour, délais et procédures pour vos achats de mode féminine.',
+    keywords: 'politique de retours, remboursement, retour article, échange, ByValsue, e-commerce Madagascar, mode féminine',
+    url: '/retours',
+    structuredData: {
+      '@context': 'https://schema.org',
+      '@type': 'WebPage',
+      name: 'Politique de Retours - ByValsue',
+      description: 'Politique de retours et remboursements de la boutique en ligne ByValsue',
+      url: 'https://eshopbyvalsue.mg/retours',
+      publisher: {
+        '@type': 'Organization',
+        name: 'ByValsue',
+        url: 'https://eshopbyvalsue.mg',
+      },
+    },
+  },
+};
+
 export default function Legal() {
   const location = useLocation();
   const page = location.pathname.replace('/', '');
   const content = legalContent[page] || legalContent['mentions-legales'];
+  const seo = seoConfig[page] || seoConfig['mentions-legales'];
 
   return (
-    <div className="container mx-auto px-4 py-16">
-      <div className="max-w-4xl mx-auto">
-        <h1 className="text-4xl font-heading font-bold text-text-dark mb-8">
-          {content.title}
-        </h1>
-        <div
-          className="prose prose-lg max-w-none text-text-dark/80"
-          dangerouslySetInnerHTML={{ __html: content.content }}
-        />
+    <>
+      <SEO
+        title={seo.title}
+        description={seo.description}
+        keywords={seo.keywords}
+        url={seo.url}
+        structuredData={seo.structuredData}
+      />
+      <div className="container mx-auto px-4 py-16">
+        <div className="max-w-4xl mx-auto">
+          <h1 className="text-4xl font-heading font-bold text-text-dark mb-8">
+            {content.title}
+          </h1>
+          <div
+            className="prose prose-lg max-w-none text-text-dark/80"
+            dangerouslySetInnerHTML={{ __html: content.content }}
+          />
+        </div>
       </div>
-    </div>
+    </>
   );
 }
 
