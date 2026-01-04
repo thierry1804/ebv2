@@ -1,4 +1,5 @@
 import { useLocation } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { SEO } from '../components/seo/SEO';
 
 const legalContent: Record<string, { title: string; content: string }> = {
@@ -178,6 +179,77 @@ export default function Legal() {
             className="prose prose-lg max-w-none text-text-dark/80"
             dangerouslySetInnerHTML={{ __html: content.content }}
           />
+          
+          {/* Navigation vers autres pages légales */}
+          <div className="mt-12 pt-8 border-t border-neutral-support">
+            <h2 className="text-2xl font-heading font-semibold text-text-dark mb-4">
+              Autres pages légales
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {page !== 'mentions-legales' && (
+                <Link
+                  to="/mentions-legales"
+                  className="bg-white p-4 rounded-lg shadow-sm hover:shadow-md transition-shadow border-2 border-transparent hover:border-secondary"
+                >
+                  <h3 className="font-heading font-semibold text-lg text-text-dark mb-1">
+                    Mentions légales
+                  </h3>
+                  <p className="text-text-dark/70 text-sm">
+                    Informations sur l'éditeur et l'hébergement
+                  </p>
+                </Link>
+              )}
+              {page !== 'cgv' && (
+                <Link
+                  to="/cgv"
+                  className="bg-white p-4 rounded-lg shadow-sm hover:shadow-md transition-shadow border-2 border-transparent hover:border-secondary"
+                >
+                  <h3 className="font-heading font-semibold text-lg text-text-dark mb-1">
+                    Conditions générales de vente
+                  </h3>
+                  <p className="text-text-dark/70 text-sm">
+                    Conditions de commande, paiement et livraison
+                  </p>
+                </Link>
+              )}
+              {page !== 'confidentialite' && (
+                <Link
+                  to="/confidentialite"
+                  className="bg-white p-4 rounded-lg shadow-sm hover:shadow-md transition-shadow border-2 border-transparent hover:border-secondary"
+                >
+                  <h3 className="font-heading font-semibold text-lg text-text-dark mb-1">
+                    Politique de confidentialité
+                  </h3>
+                  <p className="text-text-dark/70 text-sm">
+                    Protection et utilisation de vos données personnelles
+                  </p>
+                </Link>
+              )}
+              {page !== 'retours' && (
+                <Link
+                  to="/retours"
+                  className="bg-white p-4 rounded-lg shadow-sm hover:shadow-md transition-shadow border-2 border-transparent hover:border-secondary"
+                >
+                  <h3 className="font-heading font-semibold text-lg text-text-dark mb-1">
+                    Politique de retours
+                  </h3>
+                  <p className="text-text-dark/70 text-sm">
+                    Conditions et procédures de retour
+                  </p>
+                </Link>
+              )}
+            </div>
+          </div>
+
+          {/* Lien vers la boutique */}
+          <div className="mt-8 text-center">
+            <Link
+              to="/boutique"
+              className="inline-block text-secondary hover:text-primary font-medium underline text-lg"
+            >
+              Retour à la boutique
+            </Link>
+          </div>
         </div>
       </div>
     </>

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Button } from '../components/ui/Button';
 import { Mail, Phone, MapPin, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -270,6 +271,35 @@ export default function Contact() {
                   <p>Samedi : 9h - 13h</p>
                   <p>Dimanche : Fermé</p>
                 </div>
+              </div>
+
+              {/* Liens utiles */}
+              <div className="bg-white/95 backdrop-blur-sm rounded-lg p-6 shadow-lg">
+                <h3 className="text-xl font-heading font-semibold text-text-dark mb-4">
+                  Liens utiles
+                </h3>
+                <ul className="space-y-2 text-text-dark/80">
+                  <li>
+                    <Link to="/boutique" className="text-secondary hover:text-primary font-medium underline">
+                      Découvrir notre boutique
+                    </Link>
+                  </li>
+                  <li>
+                    <Link to="/a-propos" className="text-secondary hover:text-primary font-medium underline">
+                      En savoir plus sur ByValsue
+                    </Link>
+                  </li>
+                  <li>
+                    <Link to="/retours" className="text-secondary hover:text-primary font-medium underline">
+                      Politique de retours
+                    </Link>
+                  </li>
+                  <li>
+                    <Link to="/cgv" className="text-secondary hover:text-primary font-medium underline">
+                      Conditions générales de vente
+                    </Link>
+                  </li>
+                </ul>
               </div>
 
               {/* Carte interactive visible sur mobile/tablette */}

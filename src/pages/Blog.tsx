@@ -104,6 +104,10 @@ export default function Blog() {
       />
       <div className="container mx-auto px-4 py-8">
         <h1 className="text-3xl font-heading font-bold text-text-dark mb-8">Blog</h1>
+        <p className="text-text-dark/80 mb-8">
+          Découvrez nos articles sur la mode féminine, les tendances et les conseils style. 
+          Explorez également notre <Link to="/boutique" className="text-secondary hover:text-primary font-medium underline">boutique en ligne</Link> pour découvrir nos collections exclusives.
+        </p>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Articles */}

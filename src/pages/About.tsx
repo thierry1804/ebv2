@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { SEO } from '../components/seo/SEO';
 
 export default function About() {
@@ -32,7 +33,7 @@ export default function About() {
               rendre accessible l'élégance et la sophistication à toutes les femmes malgaches.
             </p>
             <p>
-              Fondée en 2020, notre boutique en ligne propose des collections soigneusement
+              Fondée en 2020, notre <Link to="/boutique" className="text-secondary hover:text-primary font-medium underline">boutique en ligne</Link> propose des collections soigneusement
               sélectionnées qui allient qualité, style et accessibilité. Nous croyons que chaque
               femme mérite de se sentir belle et confiante dans ses vêtements.
             </p>
@@ -45,7 +46,7 @@ export default function About() {
             <ul className="list-disc list-inside space-y-2">
               <li>
                 <strong>Qualité :</strong> Nous sélectionnons uniquement des produits de haute
-                qualité qui résistent à l'épreuve du temps.
+                qualité qui résistent à l'épreuve du temps. Découvrez notre <Link to="/boutique" className="text-secondary hover:text-primary font-medium underline">sélection de produits</Link>.
               </li>
               <li>
                 <strong>Élégance :</strong> Chaque pièce de notre collection est choisie pour son
@@ -56,7 +57,7 @@ export default function About() {
                 toutes les femmes.
               </li>
               <li>
-                <strong>Service client :</strong> Votre satisfaction est notre priorité absolue.
+                <strong>Service client :</strong> Votre satisfaction est notre priorité absolue. <Link to="/contact" className="text-secondary hover:text-primary font-medium underline">Contactez-nous</Link> pour toute question.
               </li>
             </ul>
           </section>
@@ -70,6 +71,48 @@ export default function About() {
               expérience d'achat possible. De la sélection des produits à la livraison, nous
               veillons à chaque détail pour vous garantir satisfaction et qualité.
             </p>
+          </section>
+
+          {/* Section de navigation */}
+          <section className="mt-12 pt-8 border-t border-neutral-support">
+            <h2 className="text-2xl font-heading font-semibold text-text-dark mb-4">
+              Découvrez ByValsue
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <Link
+                to="/boutique"
+                className="bg-white p-6 rounded-lg shadow-sm hover:shadow-md transition-shadow border-2 border-transparent hover:border-secondary"
+              >
+                <h3 className="font-heading font-semibold text-lg text-text-dark mb-2">
+                  Notre Boutique
+                </h3>
+                <p className="text-text-dark/70 text-sm">
+                  Explorez nos collections de mode féminine haut de gamme
+                </p>
+              </Link>
+              <Link
+                to="/blog"
+                className="bg-white p-6 rounded-lg shadow-sm hover:shadow-md transition-shadow border-2 border-transparent hover:border-secondary"
+              >
+                <h3 className="font-heading font-semibold text-lg text-text-dark mb-2">
+                  Notre Blog
+                </h3>
+                <p className="text-text-dark/70 text-sm">
+                  Conseils mode, tendances et actualités de la mode féminine
+                </p>
+              </Link>
+              <Link
+                to="/contact"
+                className="bg-white p-6 rounded-lg shadow-sm hover:shadow-md transition-shadow border-2 border-transparent hover:border-secondary"
+              >
+                <h3 className="font-heading font-semibold text-lg text-text-dark mb-2">
+                  Contactez-nous
+                </h3>
+                <p className="text-text-dark/70 text-sm">
+                  Une question ? Notre équipe est à votre écoute
+                </p>
+              </Link>
+            </div>
           </section>
         </div>
       </div>
