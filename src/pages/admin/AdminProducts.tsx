@@ -8,6 +8,7 @@ import { Offcanvas } from '../../components/ui/Offcanvas';
 import { Modal } from '../../components/ui/Modal';
 import { useCategories } from '../../hooks/useCategories';
 import { predefinedColors as sharedPredefinedColors } from '../../config/colors';
+import { getColorNameFromHex } from '../../config/colorNames';
 import { convertToWebP } from '../../utils/imageUtils';
 import { useAdminAuth } from '../../context/AdminAuthContext';
 
@@ -231,6 +232,7 @@ export default function AdminProducts() {
     setCustomColorName('');
     setIsOffcanvasOpen(true);
   };
+
 
   const toggleColor = (color: { name: string; hex: string; dark: boolean }) => {
     const isSelected = selectedColors.some(c => c.name === color.name && !c.custom);
@@ -827,6 +829,8 @@ export default function AdminProducts() {
                 onClose={() => setIsColorModalOpen(false)}
                 title="Ajouter des couleurs"
                 size="md"
+                showBackdrop={false}
+                draggable={true}
               >
                 <div className="space-y-6">
                   {/* Couleurs non sélectionnées */}
@@ -841,8 +845,9 @@ export default function AdminProducts() {
                               key={color.name}
                               type="button"
                               onClick={() => {
-                                toggleColor(color);
-                                setIsColorModalOpen(false);
+                                setCustomColorName(color.name);
+                                setSelectedColorHex(color.hex);
+                                setCustomColorHexInput(color.hex);
                               }}
                               className="relative w-8 h-8 rounded-full border-2 border-transparent hover:scale-110 hover:shadow-lg transition-all duration-300"
                               style={{ backgroundColor: color.hex }}
@@ -881,8 +886,11 @@ export default function AdminProducts() {
                             type="color"
                             value={selectedColorHex}
                             onChange={(e) => {
-                              setSelectedColorHex(e.target.value);
-                              setCustomColorHexInput(e.target.value);
+                              const newHex = e.target.value;
+                              setSelectedColorHex(newHex);
+                              setCustomColorHexInput(newHex);
+                              // Toujours mettre à jour le nom de la couleur quand la couleur change
+                              setCustomColorName(getColorNameFromHex(newHex));
                             }}
                             className="w-14 h-11 border-2 border-gray-300 rounded-lg cursor-pointer"
                             title="Choisir une couleur"
@@ -895,6 +903,8 @@ export default function AdminProducts() {
                               setCustomColorHexInput(hex);
                               if (/^#[0-9A-F]{6}$/i.test(hex)) {
                                 setSelectedColorHex(hex);
+                                // Toujours mettre à jour le nom de la couleur quand le code hex change
+                                setCustomColorName(getColorNameFromHex(hex));
                               }
                             }}
                             placeholder="#000000"
