@@ -24,6 +24,7 @@ export default function AdminPromoCodes() {
     usageLimitPerUser: '1',
     minOrderAmount: '',
     isActive: true,
+    isPostApplication: false,
     description: '',
   });
   const [usageStats, setUsageStats] = useState<{ [key: string]: number }>({});
@@ -61,6 +62,7 @@ export default function AdminPromoCodes() {
           usageLimitPerUser: p.usage_limit_per_user,
           minOrderAmount: p.min_order_amount ? parseFloat(p.min_order_amount.toString()) : undefined,
           isActive: p.is_active,
+          isPostApplication: p.is_post_application || false,
           description: p.description || undefined,
           createdAt: p.created_at,
           updatedAt: p.updated_at,
@@ -103,6 +105,7 @@ export default function AdminPromoCodes() {
       usageLimitPerUser: '1',
       minOrderAmount: '',
       isActive: true,
+      isPostApplication: false,
       description: '',
     });
     setIsOffcanvasOpen(true);
@@ -120,6 +123,7 @@ export default function AdminPromoCodes() {
       usageLimitPerUser: promoCode.usageLimitPerUser.toString(),
       minOrderAmount: promoCode.minOrderAmount ? promoCode.minOrderAmount.toString() : '',
       isActive: promoCode.isActive,
+      isPostApplication: promoCode.isPostApplication || false,
       description: promoCode.description || '',
     });
     setIsOffcanvasOpen(true);
@@ -157,6 +161,7 @@ export default function AdminPromoCodes() {
         usage_limit_per_user: parseInt(formData.usageLimitPerUser) || 1,
         min_order_amount: formData.minOrderAmount ? parseFloat(formData.minOrderAmount) : null,
         is_active: formData.isActive,
+        is_post_application: formData.isPostApplication,
         description: formData.description.trim() || null,
         created_by: adminUser.id,
       };
@@ -301,6 +306,11 @@ export default function AdminPromoCodes() {
                         {promoCode.applicationScope === 'item' 
                           ? '📦 Appliqué par article' 
                           : '💰 Appliqué sur le total'}
+                        {promoCode.isPostApplication && (
+                          <span className="ml-2 text-orange-600 font-semibold">
+                            ⏰ Remboursement à postériori
+                          </span>
+                        )}
                       </div>
                       {promoCode.description && (
                         <p className="text-sm text-gray-600 mt-2">{promoCode.description}</p>
@@ -514,6 +524,20 @@ export default function AdminPromoCodes() {
               />
               <span className="text-sm font-medium text-gray-700">Actif</span>
             </label>
+          </div>
+          <div>
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={formData.isPostApplication}
+                onChange={(e) => setFormData({ ...formData, isPostApplication: e.target.checked })}
+                className="rounded"
+              />
+              <span className="text-sm font-medium text-gray-700">Applicable à postériori</span>
+            </label>
+            <p className="text-xs text-gray-500 mt-1 ml-6">
+              Si coché, la réduction ne sera pas appliquée au checkout mais pourra être remboursée ultérieurement par le vendeur.
+            </p>
           </div>
         </div>
       </Offcanvas>

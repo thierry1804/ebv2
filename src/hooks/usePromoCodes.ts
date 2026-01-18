@@ -131,6 +131,7 @@ export function usePromoCodes() {
         usageLimitPerUser: dbPromoCode.usage_limit_per_user,
         minOrderAmount: dbPromoCode.min_order_amount ? parseFloat(dbPromoCode.min_order_amount.toString()) : undefined,
         isActive: dbPromoCode.is_active,
+        isPostApplication: dbPromoCode.is_post_application || false,
         description: dbPromoCode.description || undefined,
         createdAt: dbPromoCode.created_at,
         updatedAt: dbPromoCode.updated_at,

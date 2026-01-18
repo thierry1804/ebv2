@@ -249,6 +249,7 @@ export interface PromoCode {
   usageLimitPerUser: number;
   minOrderAmount?: number;
   isActive: boolean;
+  isPostApplication?: boolean; // Si true, la réduction n'est pas appliquée au checkout mais peut être remboursée ultérieurement
   description?: string;
   createdAt: string;
   updatedAt: string;
@@ -265,6 +266,7 @@ export interface DatabasePromoCode {
   usage_limit_per_user: number;
   min_order_amount: number | null;
   is_active: boolean;
+  is_post_application: boolean | null;
   description: string | null;
   created_at: string;
   updated_at: string;
@@ -290,3 +292,30 @@ export interface PromoCodeUsage {
   discountAmount: number;
 }
 
+export interface PromoCodeRefund {
+  id: string;
+  orderId: string;
+  promoCodeId: string;
+  userId?: string;
+  refundAmount: number;
+  status: 'pending' | 'processed' | 'cancelled';
+  processedAt?: string;
+  processedBy?: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DatabasePromoCodeRefund {
+  id: string;
+  order_id: string;
+  promo_code_id: string;
+  user_id: string | null;
+  refund_amount: number;
+  status: 'pending' | 'processed' | 'cancelled';
+  processed_at: string | null;
+  processed_by: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}

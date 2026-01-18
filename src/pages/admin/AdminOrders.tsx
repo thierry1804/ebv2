@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Search, Eye, Package, ChevronDown, ChevronUp } from 'lucide-react';
-import { Order, DatabaseOrder, CartItem, Address } from '../../types';
+import { Order, DatabaseOrder, CartItem, Address, PromoCodeRefund } from '../../types';
 import { formatPrice } from '../../utils/formatters';
 import { Modal } from '../../components/ui/Modal';
 import { Button } from '../../components/ui/Button';
+import { usePromoCodeRefunds } from '../../hooks/usePromoCodeRefunds';
+import { usePromoCodes } from '../../hooks/usePromoCodes';
 import toast from 'react-hot-toast';
 
 export default function AdminOrders() {
@@ -15,6 +17,9 @@ export default function AdminOrders() {
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
+  const [refunds, setRefunds] = useState<PromoCodeRefund[]>([]);
+  const { createRefund, processRefund, getRefundsByOrder } = usePromoCodeRefunds();
+  const { getPromoCode } = usePromoCodes();
 
   useEffect(() => {
     loadOrders();
@@ -92,9 +97,50 @@ export default function AdminOrders() {
     setExpandedOrders(newExpanded);
   };
 
-  const openOrderDetails = (order: Order) => {
+  const loadRefunds = async (orderId: string) => {
+    const refundsData = await getRefundsByOrder(orderId);
+    setRefunds(refundsData);
+  };
+
+  const openOrderDetails = async (order: Order) => {
     setSelectedOrder(order);
     setIsModalOpen(true);
+    // Charger les remboursements de la commande
+    if (order.id) {
+      await loadRefunds(order.id);
+    }
+  };
+
+  const handleCreateRefund = async (order: Order) => {
+    if (!order.promoCodeId || !order.promoDiscount) {
+      toast.error('Cette commande n\'a pas de code promo à rembourser');
+      return;
+    }
+
+    const refund = await createRefund(
+      order.id,
+      order.promoCodeId,
+      order.userId,
+      order.promoDiscount
+    );
+
+    if (refund) {
+      await loadRefunds(order.id);
+      toast.success('Remboursement créé avec succès');
+    }
+  };
+
+  const handleProcessRefund = async (refundId: string) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      toast.error('Vous devez être connecté');
+      return;
+    }
+
+    const success = await processRefund(refundId, user.id);
+    if (success && selectedOrder) {
+      await loadRefunds(selectedOrder.id);
+    }
   };
 
   const getStatusBadgeClass = (status: Order['status']) => {
@@ -483,6 +529,102 @@ export default function AdminOrders() {
                 </div>
               </div>
             </div>
+
+            {/* Remboursements de codes promo à postériori */}
+            {selectedOrder.promoCodeId && selectedOrder.promoDiscount && (
+              <div>
+                <h3 className="font-semibold text-text-dark mb-3">Remboursement code promo</h3>
+                {refunds.length === 0 ? (
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                    <p className="text-sm text-yellow-800 mb-3">
+                      Cette commande utilise un code promo à rembourser. Montant à rembourser :{' '}
+                      <strong>{formatPrice(selectedOrder.promoDiscount)}</strong>
+                    </p>
+                    <Button
+                      onClick={() => handleCreateRefund(selectedOrder)}
+                      className="bg-yellow-600 hover:bg-yellow-700 text-white"
+                    >
+                      Créer le remboursement
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {refunds.map((refund) => (
+                      <div
+                        key={refund.id}
+                        className={`border rounded-lg p-4 ${
+                          refund.status === 'processed'
+                            ? 'bg-green-50 border-green-200'
+                            : refund.status === 'cancelled'
+                            ? 'bg-gray-50 border-gray-200'
+                            : 'bg-yellow-50 border-yellow-200'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <div>
+                            <p className="font-semibold text-text-dark">
+                              Montant : {formatPrice(refund.refundAmount)}
+                            </p>
+                            <p className="text-xs text-gray-600">
+                              Créé le :{' '}
+                              {new Date(refund.createdAt).toLocaleDateString('fr-FR', {
+                                year: 'numeric',
+                                month: 'long',
+                                day: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })}
+                            </p>
+                            {refund.processedAt && (
+                              <p className="text-xs text-gray-600">
+                                Traité le :{' '}
+                                {new Date(refund.processedAt).toLocaleDateString('fr-FR', {
+                                  year: 'numeric',
+                                  month: 'long',
+                                  day: 'numeric',
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                })}
+                              </p>
+                            )}
+                          </div>
+                          <div className="text-right">
+                            <span
+                              className={`px-3 py-1 rounded-full text-xs font-medium ${
+                                refund.status === 'processed'
+                                  ? 'bg-green-100 text-green-800'
+                                  : refund.status === 'cancelled'
+                                  ? 'bg-gray-100 text-gray-800'
+                                  : 'bg-yellow-100 text-yellow-800'
+                              }`}
+                            >
+                              {refund.status === 'processed'
+                                ? 'Traité'
+                                : refund.status === 'cancelled'
+                                ? 'Annulé'
+                                : 'En attente'}
+                            </span>
+                          </div>
+                        </div>
+                        {refund.notes && (
+                          <p className="text-xs text-gray-600 mt-2">Note : {refund.notes}</p>
+                        )}
+                        {refund.status === 'pending' && (
+                          <div className="mt-3">
+                            <Button
+                              onClick={() => handleProcessRefund(refund.id)}
+                              className="bg-green-600 hover:bg-green-700 text-white text-sm"
+                            >
+                              Traiter le remboursement
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Actions */}
             <div className="flex flex-wrap gap-2 pt-4 border-t">

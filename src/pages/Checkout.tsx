@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { usePromoCodes } from '../hooks/usePromoCodes';
+import { usePromoCodeRefunds } from '../hooks/usePromoCodeRefunds';
 import { useOrders } from '../hooks/useOrders';
 import { Button } from '../components/ui/Button';
 import { formatPrice } from '../utils/formatters';
@@ -16,7 +17,8 @@ export default function Checkout() {
   const navigate = useNavigate();
   const { items, getSubtotal, getTotal, clearCart } = useCart();
   const { user } = useAuth();
-  const { validatePromoCode, recordPromoCodeUsage, isLoading: isPromoLoading } = usePromoCodes();
+  const { validatePromoCode, getPromoCode, recordPromoCodeUsage, isLoading: isPromoLoading } = usePromoCodes();
+  const { createRefund } = usePromoCodeRefunds();
   const { createOrder, isLoading: isCreatingOrder } = useOrders();
   const [step, setStep] = useState<Step>('shipping');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -37,6 +39,7 @@ export default function Checkout() {
   const [promoDiscount, setPromoDiscount] = useState(0);
   const [promoApplied, setPromoApplied] = useState(false);
   const [promoCodeId, setPromoCodeId] = useState<string | null>(null);
+  const [isPostApplicationPromo, setIsPostApplicationPromo] = useState(false);
   const [deliveryInstructions, setDeliveryInstructions] = useState('');
 
   const shippingCost = getSubtotal() >= 200000 ? 0 : 10000;
@@ -73,20 +76,40 @@ export default function Checkout() {
     const result = await validatePromoCode(promoCode, user?.id || null, subtotal, items);
 
     if (result.isValid && result.discountAmount > 0) {
-      setPromoDiscount(result.discountAmount);
-      setPromoApplied(true);
-      setPromoCodeId(result.promoCodeId || null);
-      
-      const discountText = result.promoCodeType === 'percentage'
-        ? `${result.promoCodeValue}%`
-        : formatPrice(result.promoCodeValue || 0);
-      
-      toast.success(`Code promo appliqué ! Réduction de ${discountText}`);
+      // Vérifier si le code est applicable à postériori
+      const promoDetails = await getPromoCode(promoCode);
+      const isPostApp = promoDetails?.isPostApplication || false;
+      setIsPostApplicationPromo(isPostApp);
+
+      if (isPostApp) {
+        // Code à postériori : on enregistre le code mais on n'applique pas la réduction
+        setPromoCodeId(result.promoCodeId || null);
+        setPromoApplied(true);
+        // Ne pas modifier promoDiscount pour que le total reste inchangé
+        const discountText = result.promoCodeType === 'percentage'
+          ? `${result.promoCodeValue}%`
+          : formatPrice(result.promoCodeValue || 0);
+        toast.success(
+          `Code promo enregistré ! Le remboursement de ${formatPrice(result.discountAmount)} sera traité ultérieurement.`
+        );
+      } else {
+        // Code normal : appliquer la réduction immédiatement
+        setPromoDiscount(result.discountAmount);
+        setPromoApplied(true);
+        setPromoCodeId(result.promoCodeId || null);
+        
+        const discountText = result.promoCodeType === 'percentage'
+          ? `${result.promoCodeValue}%`
+          : formatPrice(result.promoCodeValue || 0);
+        
+        toast.success(`Code promo appliqué ! Réduction de ${discountText}`);
+      }
     } else {
       toast.error(result.errorMessage || 'Code promo invalide');
       setPromoDiscount(0);
       setPromoApplied(false);
       setPromoCodeId(null);
+      setIsPostApplicationPromo(false);
     }
   };
 
@@ -169,9 +192,21 @@ export default function Checkout() {
         return;
       }
 
-      // Enregistrer l'utilisation du code promo si un code promo a été appliqué
-      if (promoCodeId && promoDiscount > 0 && order.id) {
-        await recordPromoCodeUsage(promoCodeId, user?.id || null, order.id, promoDiscount);
+      // Gérer le code promo selon son type
+      if (promoCodeId && order.id) {
+        if (isPostApplicationPromo) {
+          // Code à postériori : créer un remboursement en attente
+          // Le montant de réduction a été calculé mais pas appliqué au total
+          await createRefund(
+            order.id,
+            promoCodeId,
+            user?.id || null,
+            promoDiscount // Le montant calculé mais non appliqué
+          );
+        } else if (promoDiscount > 0) {
+          // Code normal : enregistrer l'utilisation normale
+          await recordPromoCodeUsage(promoCodeId, user?.id || null, order.id, promoDiscount);
+        }
       }
 
       // Vider le panier et afficher la confirmation
