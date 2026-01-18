@@ -304,9 +304,7 @@ export interface PromoCodeRefund {
   notes?: string;
   createdAt: string;
   updatedAt: string;
-}
-
-export interface DatabasePromoCodeRefund {
+}export interface DatabasePromoCodeRefund {
   id: string;
   order_id: string;
   promo_code_id: string;
