@@ -22,6 +22,8 @@ export interface Product {
   isOnSale?: boolean;
   salePrice?: number;
   brand?: string;
+  // Support des variantes
+  hasVariants?: boolean;
 }
 
 export interface CartItem {
@@ -32,6 +34,10 @@ export interface CartItem {
   color: string | null;
   quantity: number;
   price: number; // Prix au moment de l'ajout
+  // Support des variantes
+  variantId?: string | null;
+  variantSku?: string | null;
+  variantOptions?: Array<{ name: string; value: string }>;
 }
 
 export interface User {

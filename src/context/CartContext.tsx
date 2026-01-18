@@ -5,7 +5,15 @@ import { useAuth } from './AuthContext';
 
 interface CartContextType {
   items: CartItem[];
-  addItem: (product: Product, size: string | null, color: string | null, quantity?: number) => void;
+  addItem: (
+    product: Product, 
+    size: string | null, 
+    color: string | null, 
+    quantity?: number,
+    variantId?: string | null,
+    variantSku?: string | null,
+    variantOptions?: Array<{ name: string; value: string }>
+  ) => void;
   removeItem: (itemId: string) => void;
   updateQuantity: (itemId: string, quantity: number) => void;
   clearCart: () => void;
@@ -169,14 +177,30 @@ export function CartProvider({ children }: { children: ReactNode }) {
     };
   }, [items, isAuthenticated, user?.id]);
 
-  const addItem = (product: Product, size: string | null, color: string | null, quantity = 1) => {
+  const addItem = (
+    product: Product, 
+    size: string | null, 
+    color: string | null, 
+    quantity = 1,
+    variantId?: string | null,
+    variantSku?: string | null,
+    variantOptions?: Array<{ name: string; value: string }>
+  ) => {
     setItems((prevItems) => {
-      const existingItem = prevItems.find(
-        (item) =>
+      // Recherche d'un article existant
+      const existingItem = prevItems.find((item) => {
+        // Si on a une variante, comparer par variantId
+        if (variantId) {
+          return item.variantId === variantId;
+        }
+        // Sinon, comparer par produit + taille + couleur (ancien comportement)
+        return (
           item.productId === product.id &&
           item.size === size &&
-          item.color === color
-      );
+          item.color === color &&
+          !item.variantId // S'assurer que ce n'est pas un article avec variante
+        );
+      });
 
       if (existingItem) {
         return prevItems.map((item) =>
@@ -186,16 +210,23 @@ export function CartProvider({ children }: { children: ReactNode }) {
         );
       }
 
+      // Création d'un nouvel article
       const sizePart = size || 'none';
       const colorPart = color || 'none';
+      const variantPart = variantId || 'none';
+      
       const newItem: CartItem = {
-        id: `${product.id}-${sizePart}-${colorPart}-${Date.now()}`,
+        id: `${product.id}-${variantPart}-${sizePart}-${colorPart}-${Date.now()}`,
         productId: product.id,
         product,
         size,
         color,
         quantity,
         price: product.salePrice || product.price,
+        // Nouvelles propriétés pour les variantes
+        variantId: variantId || null,
+        variantSku: variantSku || null,
+        variantOptions: variantOptions || undefined,
       };
 
       return [...prevItems, newItem];

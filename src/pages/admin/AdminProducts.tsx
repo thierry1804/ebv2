@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Product } from '../../types';
-import { Plus, Edit, Trash2, Upload, X, Check } from 'lucide-react';
+import { Plus, Edit, Trash2, Upload, X, Check, Package, Layers, ChevronDown, ChevronUp } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import toast from 'react-hot-toast';
 import { Offcanvas } from '../../components/ui/Offcanvas';
@@ -11,6 +11,14 @@ import { predefinedColors as sharedPredefinedColors } from '../../config/colors'
 import { getColorNameFromHex } from '../../config/colorNames';
 import { convertToWebP } from '../../utils/imageUtils';
 import { useAdminAuth } from '../../context/AdminAuthContext';
+import { useProductVariants } from '../../hooks/useProductVariants';
+import { 
+  VariantOption, 
+  ProductVariant, 
+  VariantOptionFormData,
+  VariantFormData,
+  getVariantDisplayName 
+} from '../../types/variants';
 
 export default function AdminProducts() {
   const { adminUser } = useAdminAuth();
@@ -33,6 +41,7 @@ export default function AdminProducts() {
     isOnSale: false,
     salePrice: '',
     brand: '',
+    hasVariants: false,
   });
   const [isUploading, setIsUploading] = useState(false);
   const [selectedColors, setSelectedColors] = useState<Array<{name: string, hex: string, custom: boolean}>>([]);
@@ -41,6 +50,45 @@ export default function AdminProducts() {
   const [customColorHexInput, setCustomColorHexInput] = useState('#1abc9c');
   const [isColorModalOpen, setIsColorModalOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // États pour la gestion des variantes
+  const [isVariantsSectionOpen, setIsVariantsSectionOpen] = useState(false);
+  const [isOptionModalOpen, setIsOptionModalOpen] = useState(false);
+  const [isVariantModalOpen, setIsVariantModalOpen] = useState(false);
+  const [editingOption, setEditingOption] = useState<VariantOption | null>(null);
+  const [editingVariant, setEditingVariant] = useState<ProductVariant | null>(null);
+  const [optionFormData, setOptionFormData] = useState<VariantOptionFormData>({
+    name: '',
+    values: [{ value: '' }]
+  });
+  const [variantFormData, setVariantFormData] = useState<VariantFormData>({
+    sku: '',
+    price: '',
+    compareAtPrice: '',
+    costPrice: '',
+    stock: '0',
+    weight: '',
+    isAvailable: true,
+    images: [],
+    options: {}
+  });
+  const [isUploadingVariantImages, setIsUploadingVariantImages] = useState(false);
+  const variantFileInputRef = useRef<HTMLInputElement>(null);
+  
+  // Hook pour les variantes
+  const { 
+    variants, 
+    options: variantOptions, 
+    isLoading: isLoadingVariants,
+    loadVariants,
+    saveOption,
+    deleteOption,
+    saveVariant,
+    deleteVariant,
+    generateAllVariants,
+    getTotalStock,
+    getPriceRange
+  } = useProductVariants(editingProduct?.id || null);
 
   // Palette de couleurs prédéfinies (importée depuis la config partagée)
   const predefinedColors = sharedPredefinedColors;
@@ -120,6 +168,7 @@ export default function AdminProducts() {
             isOnSale: p.is_on_sale || false,
             salePrice: p.sale_price,
             brand: p.brand,
+            hasVariants: p.has_variants || false,
           };
         });
         setProducts(adaptedProducts);
@@ -148,11 +197,13 @@ export default function AdminProducts() {
       isOnSale: false,
       salePrice: '',
       brand: '',
+      hasVariants: false,
     });
     setSelectedColors([]);
     setSelectedColorHex('#1abc9c');
     setCustomColorHexInput('#1abc9c');
     setCustomColorName('');
+    setIsVariantsSectionOpen(false);
     setIsOffcanvasOpen(true);
   };
 
@@ -225,11 +276,13 @@ export default function AdminProducts() {
       isOnSale: product.isOnSale || false,
       salePrice: product.salePrice?.toString() || '',
       brand: product.brand || '',
+      hasVariants: product.hasVariants || false,
     });
     setSelectedColors(normalizedColors);
     setSelectedColorHex('#1abc9c');
     setCustomColorHexInput('#1abc9c');
     setCustomColorName('');
+    setIsVariantsSectionOpen(product.hasVariants || false);
     setIsOffcanvasOpen(true);
   };
 
@@ -447,7 +500,7 @@ export default function AdminProducts() {
         price: parseFloat(formData.price),
         description: formData.description,
         composition: formData.composition,
-        stock: parseInt(formData.stock),
+        stock: formData.hasVariants ? 0 : parseInt(formData.stock), // Stock géré par variantes si activé
         sizes: sizesArray,
         colors: colorsArray, // Maintenant stocké avec hex
         images: imagesArray,
@@ -455,6 +508,7 @@ export default function AdminProducts() {
         is_on_sale: formData.isOnSale,
         sale_price: formData.salePrice ? parseFloat(formData.salePrice) : null,
         brand: formData.brand || null,
+        has_variants: formData.hasVariants,
       };
 
       if (editingProduct) {
@@ -1053,8 +1107,728 @@ export default function AdminProducts() {
               />
             </div>
           )}
+
+          {/* Section Variantes */}
+          <div className="border-t border-gray-200 pt-4 mt-4">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <Layers size={20} className="text-gray-600" />
+                <label htmlFor="hasVariants" className="text-sm font-medium text-gray-700">
+                  Ce produit a des variantes
+                </label>
+                <input
+                  type="checkbox"
+                  id="hasVariants"
+                  checked={formData.hasVariants}
+                  onChange={(e) => {
+                    setFormData({ ...formData, hasVariants: e.target.checked });
+                    if (e.target.checked) {
+                      setIsVariantsSectionOpen(true);
+                    }
+                  }}
+                  className="w-5 h-5 text-secondary border-gray-300 rounded focus:ring-secondary"
+                />
+              </div>
+              {formData.hasVariants && (
+                <button
+                  type="button"
+                  onClick={() => setIsVariantsSectionOpen(!isVariantsSectionOpen)}
+                  className="text-gray-500 hover:text-gray-700"
+                >
+                  {isVariantsSectionOpen ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                </button>
+              )}
+            </div>
+
+            {formData.hasVariants && isVariantsSectionOpen && editingProduct && (
+              <div className="bg-gray-50 rounded-lg p-4 space-y-4">
+                {/* Options de variantes */}
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-sm font-semibold text-gray-700">Options (ex: Taille, Couleur)</h4>
+                    <Button
+                      onClick={() => {
+                        setEditingOption(null);
+                        setOptionFormData({ name: '', values: [{ value: '' }] });
+                        setIsOptionModalOpen(true);
+                      }}
+                      className="bg-blue-500 hover:bg-blue-600 text-white text-xs px-3 py-1"
+                    >
+                      <Plus size={14} className="mr-1" />
+                      Ajouter une option
+                    </Button>
+                  </div>
+                  
+                  {isLoadingVariants ? (
+                    <p className="text-sm text-gray-500">Chargement...</p>
+                  ) : variantOptions.length === 0 ? (
+                    <p className="text-sm text-gray-500 italic">Aucune option définie. Ajoutez des options pour créer des variantes.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {variantOptions.map((option) => (
+                        <div key={option.id} className="flex items-center justify-between bg-white p-3 rounded border border-gray-200">
+                          <div>
+                            <span className="font-medium text-gray-800">{option.name}</span>
+                            <span className="text-gray-500 text-sm ml-2">
+                              ({option.values.map(v => v.value).join(', ')})
+                            </span>
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingOption(option);
+                                setOptionFormData({
+                                  id: option.id,
+                                  name: option.name,
+                                  values: option.values.map(v => ({ 
+                                    id: v.id, 
+                                    value: v.value, 
+                                    hexColor: v.hexColor 
+                                  }))
+                                });
+                                setIsOptionModalOpen(true);
+                              }}
+                              className="text-blue-600 hover:text-blue-800"
+                            >
+                              <Edit size={16} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                if (confirm('Supprimer cette option ?')) {
+                                  await deleteOption(option.id);
+                                }
+                              }}
+                              className="text-red-600 hover:text-red-800"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Variantes */}
+                {variantOptions.length > 0 && (
+                  <div className="border-t border-gray-200 pt-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <h4 className="text-sm font-semibold text-gray-700">
+                        Variantes ({variants.length})
+                        {variants.length > 0 && (
+                          <span className="font-normal text-gray-500 ml-2">
+                            Stock total: {getTotalStock()}
+                          </span>
+                        )}
+                      </h4>
+                      <div className="flex gap-2">
+                        <Button
+                          onClick={async () => {
+                            if (editingProduct) {
+                              await generateAllVariants(editingProduct.id, parseFloat(formData.price) || 0);
+                            }
+                          }}
+                          className="bg-green-500 hover:bg-green-600 text-white text-xs px-3 py-1"
+                        >
+                          <Package size={14} className="mr-1" />
+                          Générer toutes
+                        </Button>
+                        <Button
+                          onClick={() => {
+                            setEditingVariant(null);
+                            setVariantFormData({
+                              sku: '',
+                              price: '',
+                              compareAtPrice: '',
+                              costPrice: '',
+                              stock: '0',
+                              weight: '',
+                              isAvailable: true,
+                              images: [],
+                              options: {}
+                            });
+                            setIsVariantModalOpen(true);
+                          }}
+                          className="bg-blue-500 hover:bg-blue-600 text-white text-xs px-3 py-1"
+                        >
+                          <Plus size={14} className="mr-1" />
+                          Ajouter
+                        </Button>
+                      </div>
+                    </div>
+
+                    {variants.length === 0 ? (
+                      <p className="text-sm text-gray-500 italic">Aucune variante. Cliquez sur "Générer toutes" pour créer automatiquement les combinaisons.</p>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead className="bg-gray-100">
+                            <tr>
+                              <th className="px-3 py-2 text-left">Variante</th>
+                              <th className="px-3 py-2 text-left">SKU</th>
+                              <th className="px-3 py-2 text-right">Prix</th>
+                              <th className="px-3 py-2 text-right">Stock</th>
+                              <th className="px-3 py-2 text-center">Dispo</th>
+                              <th className="px-3 py-2 text-right">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-200">
+                            {variants.map((variant) => (
+                              <tr key={variant.id} className="hover:bg-gray-50">
+                                <td className="px-3 py-2">
+                                  <div className="flex items-center gap-2">
+                                    {variant.options.some(o => o.hexColor) && (
+                                      <span 
+                                        className="w-4 h-4 rounded-full border border-gray-300"
+                                        style={{ backgroundColor: variant.options.find(o => o.hexColor)?.hexColor }}
+                                      />
+                                    )}
+                                    {getVariantDisplayName(variant)}
+                                  </div>
+                                </td>
+                                <td className="px-3 py-2 text-gray-600">{variant.sku || '-'}</td>
+                                <td className="px-3 py-2 text-right">
+                                  {variant.price ? `${variant.price.toLocaleString()} MGA` : 'Prix de base'}
+                                </td>
+                                <td className="px-3 py-2 text-right">{variant.stock}</td>
+                                <td className="px-3 py-2 text-center">
+                                  <span className={`inline-block w-3 h-3 rounded-full ${variant.isAvailable ? 'bg-green-500' : 'bg-red-500'}`} />
+                                </td>
+                                <td className="px-3 py-2 text-right">
+                                  <div className="flex justify-end gap-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setEditingVariant(variant);
+                                        setVariantFormData({
+                                          id: variant.id,
+                                          sku: variant.sku || '',
+                                          price: variant.price?.toString() || '',
+                                          compareAtPrice: variant.compareAtPrice?.toString() || '',
+                                          costPrice: variant.costPrice?.toString() || '',
+                                          stock: variant.stock.toString(),
+                                          weight: variant.weight?.toString() || '',
+                                          isAvailable: variant.isAvailable,
+                                          images: variant.images || [],
+                                          options: variant.options.reduce((acc, o) => {
+                                            acc[o.optionId] = o.valueId;
+                                            return acc;
+                                          }, {} as Record<string, string>)
+                                        });
+                                        setIsVariantModalOpen(true);
+                                      }}
+                                      className="p-1 text-blue-600 hover:text-blue-800"
+                                    >
+                                      <Edit size={14} />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={async () => {
+                                        if (confirm('Supprimer cette variante ?')) {
+                                          await deleteVariant(variant.id);
+                                        }
+                                      }}
+                                      className="p-1 text-red-600 hover:text-red-800"
+                                    >
+                                      <Trash2 size={14} />
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {formData.hasVariants && !editingProduct && (
+                  <p className="text-sm text-amber-600 bg-amber-50 p-3 rounded-lg">
+                    ⚠️ Enregistrez d'abord le produit pour pouvoir ajouter des variantes.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </Offcanvas>
+
+      {/* Modal pour ajouter/modifier une option */}
+      <Modal
+        isOpen={isOptionModalOpen}
+        onClose={() => setIsOptionModalOpen(false)}
+        title={editingOption ? 'Modifier l\'option' : 'Ajouter une option'}
+        size="md"
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Nom de l'option *
+            </label>
+            <input
+              type="text"
+              value={optionFormData.name}
+              onChange={(e) => setOptionFormData({ ...optionFormData, name: e.target.value })}
+              placeholder="Ex: Taille, Couleur, Matière..."
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-secondary"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Valeurs *
+            </label>
+            
+            {/* Palette de couleurs prédéfinies si c'est une option Couleur */}
+            {optionFormData.name.toLowerCase().includes('couleur') && (
+              <div className="mb-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                <p className="text-xs text-gray-600 mb-2 font-semibold uppercase tracking-wide">
+                  Couleurs prédéfinies
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {predefinedColors.map((color) => {
+                    // Obtenir le nom de la couleur depuis la base de données
+                    const colorName = getColorNameFromHex(color.hex);
+                    const alreadyAdded = optionFormData.values.some(
+                      v => v.value.toLowerCase() === colorName.toLowerCase()
+                    );
+                    return (
+                      <button
+                        key={color.name}
+                        type="button"
+                        onClick={() => {
+                          if (!alreadyAdded) {
+                            // Chercher un champ vide pour le remplir, sinon ajouter une nouvelle ligne
+                            const emptyIndex = optionFormData.values.findIndex(v => !v.value || !v.value.trim());
+                            
+                            const newValues = [...optionFormData.values];
+                            
+                            if (emptyIndex !== -1) {
+                              // Remplir le champ vide avec le nom depuis colorNames
+                              newValues[emptyIndex] = { 
+                                ...newValues[emptyIndex],
+                                value: colorName, 
+                                hexColor: color.hex 
+                              };
+                            } else {
+                              // Ajouter une nouvelle ligne avec le nom depuis colorNames
+                              newValues.push({ value: colorName, hexColor: color.hex });
+                            }
+                            
+                            // Mettre à jour l'état avec un nouvel objet pour forcer le re-render
+                            setOptionFormData(prev => ({
+                              ...prev,
+                              values: newValues
+                            }));
+                            
+                            toast.success(`Couleur "${colorName}" ajoutée`);
+                          } else {
+                            toast.error(`La couleur "${colorName}" est déjà ajoutée`);
+                          }
+                        }}
+                        disabled={alreadyAdded}
+                        className={`
+                          relative w-10 h-10 rounded-full border-2 transition-all
+                          ${alreadyAdded 
+                            ? 'opacity-50 cursor-not-allowed border-gray-300' 
+                            : 'border-gray-300 hover:border-gray-500 hover:scale-110 hover:shadow-lg'
+                          }
+                        `}
+                        style={{ backgroundColor: color.hex }}
+                        title={alreadyAdded ? `${colorName} (déjà ajoutée)` : `Ajouter ${colorName}`}
+                      >
+                        {alreadyAdded && (
+                          <Check 
+                            size={14} 
+                            className={`absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 ${
+                              color.dark ? 'text-white' : 'text-gray-800'
+                            }`}
+                          />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-xs text-gray-500 mt-2 italic">
+                  Cliquez sur une couleur pour l'ajouter automatiquement avec son code hex
+                </p>
+              </div>
+            )}
+            
+            <div className="space-y-2">
+              {optionFormData.values.map((val, index) => (
+                <div key={`${val.value}-${val.hexColor || ''}-${index}`} className="flex gap-2">
+                  <input
+                    type="text"
+                    value={val.value || ''}
+                    onChange={(e) => {
+                      const newValues = [...optionFormData.values];
+                      newValues[index] = { ...newValues[index], value: e.target.value };
+                      setOptionFormData(prev => ({ ...prev, values: newValues }));
+                    }}
+                    placeholder="Ex: S, M, L ou Rouge, Bleu..."
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-secondary text-sm"
+                  />
+                  {optionFormData.name.toLowerCase().includes('couleur') && (
+                    <input
+                      type="color"
+                      value={val.hexColor || '#cccccc'}
+                      onChange={(e) => {
+                        const newHex = e.target.value.toUpperCase();
+                        const colorName = getColorNameFromHex(newHex);
+                        const newValues = [...optionFormData.values];
+                        newValues[index] = { 
+                          ...newValues[index], 
+                          hexColor: newHex,
+                          value: colorName // Remplir automatiquement le nom
+                        };
+                        setOptionFormData(prev => ({ ...prev, values: newValues }));
+                      }}
+                      className="w-10 h-10 border border-gray-300 rounded-lg cursor-pointer"
+                    />
+                  )}
+                  {optionFormData.values.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const newValues = optionFormData.values.filter((_, i) => i !== index);
+                        setOptionFormData({ ...optionFormData, values: newValues });
+                      }}
+                      className="p-2 text-red-600 hover:text-red-800"
+                    >
+                      <X size={18} />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setOptionFormData({
+                  ...optionFormData,
+                  values: [...optionFormData.values, { value: '' }]
+                });
+              }}
+              className="mt-2 text-sm text-blue-600 hover:text-blue-800 flex items-center gap-1"
+            >
+              <Plus size={14} />
+              Ajouter une valeur
+            </button>
+          </div>
+
+          <div className="flex justify-end gap-3 pt-4 border-t">
+            <Button
+              onClick={() => setIsOptionModalOpen(false)}
+              className="bg-gray-200 hover:bg-gray-300 text-gray-800"
+            >
+              Annuler
+            </Button>
+            <Button
+              onClick={async () => {
+                if (!optionFormData.name.trim()) {
+                  toast.error('Le nom de l\'option est requis');
+                  return;
+                }
+                const validValues = optionFormData.values.filter(v => v.value.trim());
+                if (validValues.length === 0) {
+                  toast.error('Ajoutez au moins une valeur');
+                  return;
+                }
+                await saveOption({
+                  ...optionFormData,
+                  values: validValues
+                });
+                setIsOptionModalOpen(false);
+              }}
+              className="bg-secondary hover:bg-secondary/90"
+            >
+              {editingOption ? 'Modifier' : 'Ajouter'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Modal pour ajouter/modifier une variante */}
+      <Modal
+        isOpen={isVariantModalOpen}
+        onClose={() => setIsVariantModalOpen(false)}
+        title={editingVariant ? 'Modifier la variante' : 'Ajouter une variante'}
+        size="lg"
+      >
+        <div className="space-y-4">
+          {/* Sélection des options */}
+          <div className="grid grid-cols-2 gap-4">
+            {variantOptions.map((option) => (
+              <div key={option.id}>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  {option.name} *
+                </label>
+                <select
+                  value={variantFormData.options[option.id] || ''}
+                  onChange={(e) => {
+                    setVariantFormData({
+                      ...variantFormData,
+                      options: { ...variantFormData.options, [option.id]: e.target.value }
+                    });
+                  }}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-secondary"
+                >
+                  <option value="">Sélectionner...</option>
+                  {option.values.map((val) => (
+                    <option key={val.id} value={val.id}>
+                      {val.value}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">SKU</label>
+              <input
+                type="text"
+                value={variantFormData.sku}
+                onChange={(e) => setVariantFormData({ ...variantFormData, sku: e.target.value })}
+                placeholder="Code article unique"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-secondary"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Stock *</label>
+              <input
+                type="number"
+                value={variantFormData.stock}
+                onChange={(e) => setVariantFormData({ ...variantFormData, stock: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-secondary"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Prix (MGA)
+                <span className="font-normal text-gray-500 text-xs ml-1">(vide = prix de base)</span>
+              </label>
+              <input
+                type="number"
+                value={variantFormData.price}
+                onChange={(e) => setVariantFormData({ ...variantFormData, price: e.target.value })}
+                placeholder={formData.price}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-secondary"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Prix barré</label>
+              <input
+                type="number"
+                value={variantFormData.compareAtPrice}
+                onChange={(e) => setVariantFormData({ ...variantFormData, compareAtPrice: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-secondary"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Coût d'achat</label>
+              <input
+                type="number"
+                value={variantFormData.costPrice}
+                onChange={(e) => setVariantFormData({ ...variantFormData, costPrice: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-secondary"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Poids (g)</label>
+              <input
+                type="number"
+                value={variantFormData.weight}
+                onChange={(e) => setVariantFormData({ ...variantFormData, weight: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-secondary"
+              />
+            </div>
+            <div className="flex items-center pt-6">
+              <input
+                type="checkbox"
+                id="variantAvailable"
+                checked={variantFormData.isAvailable}
+                onChange={(e) => setVariantFormData({ ...variantFormData, isAvailable: e.target.checked })}
+                className="mr-2 w-5 h-5"
+              />
+              <label htmlFor="variantAvailable" className="text-sm text-gray-700">
+                Disponible à la vente
+              </label>
+            </div>
+          </div>
+
+          {/* Images de la variante */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Images</label>
+            
+            {/* Upload de fichiers */}
+            <div className="mb-3">
+              <input
+                ref={variantFileInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={async (e) => {
+                  const files = e.target.files;
+                  if (!files || files.length === 0) return;
+
+                  setIsUploadingVariantImages(true);
+                  const uploadedUrls: string[] = [];
+
+                  try {
+                    const uploadPromises = Array.from(files).map((file) => handleImageUpload(file));
+                    const results = await Promise.all(uploadPromises);
+
+                    results.forEach((url) => {
+                      if (url) {
+                        uploadedUrls.push(url);
+                      }
+                    });
+
+                    if (uploadedUrls.length > 0) {
+                      setVariantFormData((prev) => ({
+                        ...prev,
+                        images: [...prev.images, ...uploadedUrls],
+                      }));
+                      toast.success(`${uploadedUrls.length} image(s) uploadée(s) avec succès`);
+                    }
+
+                    if (variantFileInputRef.current) {
+                      variantFileInputRef.current.value = '';
+                    }
+                  } catch (error: any) {
+                    console.error('Erreur lors de l\'upload multiple:', error);
+                    toast.error('Erreur lors de l\'upload des images');
+                  } finally {
+                    setIsUploadingVariantImages(false);
+                  }
+                }}
+                className="hidden"
+                id="variant-images-upload"
+              />
+              <label
+                htmlFor="variant-images-upload"
+                className="inline-flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg cursor-pointer transition-colors"
+              >
+                <Upload size={18} />
+                {isUploadingVariantImages ? 'Upload en cours...' : 'Uploader des images'}
+              </label>
+            </div>
+
+            {/* URLs manuelles */}
+            <div className="mb-2">
+              <label className="block text-xs text-gray-600 mb-1">Ou ajouter une URL</label>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <input
+                  type="text"
+                  placeholder="https://images.unsplash.com/..."
+                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-secondary"
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter') {
+                      const input = e.target as HTMLInputElement;
+                      if (input.value.trim()) {
+                        setVariantFormData((prev) => ({
+                          ...prev,
+                          images: [...prev.images, input.value.trim()],
+                        }));
+                        input.value = '';
+                      }
+                    }
+                  }}
+                />
+                <Button
+                  onClick={() => {
+                    const input = document.querySelector('input[placeholder*="https://images"]') as HTMLInputElement;
+                    if (input?.value.trim()) {
+                      setVariantFormData((prev) => ({
+                        ...prev,
+                        images: [...prev.images, input.value.trim()],
+                      }));
+                      input.value = '';
+                    }
+                  }}
+                  className="bg-gray-200 hover:bg-gray-300 text-gray-800 w-full sm:w-auto"
+                >
+                  Ajouter
+                </Button>
+              </div>
+            </div>
+
+            {/* Liste des images */}
+            {variantFormData.images.length > 0 && (
+              <div className="mt-4">
+                <label className="block text-xs text-gray-600 mb-2">
+                  Images ajoutées ({variantFormData.images.length})
+                </label>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                  {variantFormData.images.map((image, index) => (
+                    <div key={index} className="relative group">
+                      <img
+                        src={image}
+                        alt={`Image variante ${index + 1}`}
+                        className="w-full h-32 object-cover rounded-lg border border-gray-200"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).style.display = 'none';
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const newImages = variantFormData.images.filter((_, i) => i !== index);
+                          setVariantFormData({ ...variantFormData, images: newImages });
+                        }}
+                        className="absolute top-2 right-2 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                        title="Supprimer"
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="flex justify-end gap-3 pt-4 border-t">
+            <Button
+              onClick={() => setIsVariantModalOpen(false)}
+              className="bg-gray-200 hover:bg-gray-300 text-gray-800"
+            >
+              Annuler
+            </Button>
+            <Button
+              onClick={async () => {
+                // Vérifier que toutes les options sont sélectionnées
+                const missingOptions = variantOptions.filter(
+                  opt => !variantFormData.options[opt.id]
+                );
+                if (missingOptions.length > 0) {
+                  toast.error(`Sélectionnez une valeur pour: ${missingOptions.map(o => o.name).join(', ')}`);
+                  return;
+                }
+                if (editingProduct) {
+                  await saveVariant(variantFormData, editingProduct.id);
+                }
+                setIsVariantModalOpen(false);
+              }}
+              className="bg-secondary hover:bg-secondary/90"
+            >
+              {editingVariant ? 'Modifier' : 'Ajouter'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

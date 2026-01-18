@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { Star, Heart, ShoppingCart, ArrowLeft } from 'lucide-react';
 import { ProductGallery } from '../components/product/ProductGallery';
@@ -17,6 +17,8 @@ import { useProducts } from '../hooks/useProducts';
 import toast from 'react-hot-toast';
 import { SEO } from '../components/seo/SEO';
 import { analytics } from '../hooks/useGoogleAnalytics';
+import { useProductVariants } from '../hooks/useProductVariants';
+import { ProductVariant, getVariantDisplayName } from '../types/variants';
 
 export default function ProductDetail() {
   const { id } = useParams<{ id: string }>();
@@ -34,6 +36,28 @@ export default function ProductDetail() {
     'description'
   );
   const [reviewsKey, setReviewsKey] = useState(0); // Pour forcer le rechargement de ReviewList
+  
+  // État pour les variantes
+  const [selectedOptions, setSelectedOptions] = useState<Record<string, string>>({});
+  
+  // Hook pour les variantes
+  const { 
+    variants, 
+    options: variantOptions, 
+    isLoading: isLoadingVariants,
+    findVariant,
+    getTotalStock,
+    getPriceRange
+  } = useProductVariants(product?.hasVariants ? product?.id || null : null);
+  
+  // Variante sélectionnée
+  const selectedVariant = useMemo((): ProductVariant | null => {
+    if (!product?.hasVariants || variantOptions.length === 0) return null;
+    // Vérifier que toutes les options sont sélectionnées
+    const allSelected = variantOptions.every(opt => selectedOptions[opt.id]);
+    if (!allSelected) return null;
+    return findVariant(selectedOptions);
+  }, [product?.hasVariants, variantOptions, selectedOptions, findVariant]);
 
   // Suivre la vue du produit avec Google Analytics
   // IMPORTANT: Ce hook doit être appelé AVANT tout return conditionnel
@@ -55,7 +79,36 @@ export default function ProductDetail() {
     );
   }
 
-  const displayPrice = product.salePrice || product.price;
+  // Calcul du prix et du stock en fonction des variantes
+  const hasVariants = product.hasVariants && variants.length > 0;
+  
+  // Prix affiché (variant > sale > base)
+  const displayPrice = useMemo(() => {
+    if (hasVariants && selectedVariant) {
+      return selectedVariant.price ?? product.price;
+    }
+    return product.salePrice || product.price;
+  }, [hasVariants, selectedVariant, product.price, product.salePrice]);
+  
+  // Plage de prix pour les variantes
+  const priceRange = useMemo(() => {
+    if (hasVariants) {
+      return getPriceRange(product.price);
+    }
+    return { min: product.price, max: product.price };
+  }, [hasVariants, getPriceRange, product.price]);
+  
+  // Stock disponible
+  const currentStock = useMemo(() => {
+    if (hasVariants) {
+      if (selectedVariant) {
+        return selectedVariant.stock;
+      }
+      return getTotalStock();
+    }
+    return product.stock;
+  }, [hasVariants, selectedVariant, getTotalStock, product.stock]);
+  
   const hasSale = product.isOnSale && product.salePrice;
   const inWishlist = isInWishlist(product.id);
 
@@ -65,7 +118,40 @@ export default function ProductDetail() {
     .slice(0, 4);
 
   const handleAddToCart = () => {
-    // Vérifier uniquement les attributs qui existent pour le produit
+    // Si le produit a des variantes, vérifier qu'une variante est sélectionnée
+    if (hasVariants) {
+      const missingOptions = variantOptions.filter(opt => !selectedOptions[opt.id]);
+      if (missingOptions.length > 0) {
+        toast.error(`Veuillez sélectionner: ${missingOptions.map(o => o.name).join(', ')}`);
+        return;
+      }
+      
+      if (!selectedVariant) {
+        toast.error('Cette combinaison n\'est pas disponible');
+        return;
+      }
+      
+      if (!selectedVariant.isAvailable || selectedVariant.stock === 0) {
+        toast.error('Cette variante est en rupture de stock');
+        return;
+      }
+      
+      // Ajouter avec les infos de variante
+      addItem(
+        product, 
+        null, // size (géré par la variante)
+        null, // color (géré par la variante)
+        quantity,
+        selectedVariant.id,
+        selectedVariant.sku,
+        selectedVariant.options.map(o => ({ name: o.optionName, value: o.value }))
+      );
+      analytics.addToCart(product.id, product.name, displayPrice, quantity);
+      toast.success('Produit ajouté au panier');
+      return;
+    }
+    
+    // Logique originale pour les produits sans variantes
     const hasSizes = product.sizes && product.sizes.length > 0;
     const hasColors = product.colors && product.colors.length > 0;
     
@@ -146,7 +232,14 @@ export default function ProductDetail() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 mb-1">
         {/* Galerie */}
         <div>
-          <ProductGallery images={product.images} productName={product.name} />
+          <ProductGallery 
+            images={
+              hasVariants && selectedVariant && selectedVariant.images && selectedVariant.images.length > 0
+                ? selectedVariant.images
+                : product.images
+            } 
+            productName={product.name} 
+          />
         </div>
 
         {/* Informations */}
@@ -190,19 +283,103 @@ export default function ProductDetail() {
 
           {/* Prix */}
           <div className="mb-6">
-            {hasSale && (
-              <span className="text-xl text-neutral-support line-through mr-2">
-                {formatPrice(product.price)}
+            {hasVariants && !selectedVariant ? (
+              // Afficher la plage de prix si variantes et aucune sélectionnée
+              <span className="text-3xl font-bold text-text-dark">
+                {priceRange.min === priceRange.max 
+                  ? formatPrice(priceRange.min)
+                  : `${formatPrice(priceRange.min)} - ${formatPrice(priceRange.max)}`
+                }
               </span>
+            ) : (
+              <>
+                {hasSale && !hasVariants && (
+                  <span className="text-xl text-neutral-support line-through mr-2">
+                    {formatPrice(product.price)}
+                  </span>
+                )}
+                {selectedVariant?.compareAtPrice && (
+                  <span className="text-xl text-neutral-support line-through mr-2">
+                    {formatPrice(selectedVariant.compareAtPrice)}
+                  </span>
+                )}
+                <span className={`text-3xl font-bold ${hasSale || selectedVariant?.compareAtPrice ? 'text-secondary' : 'text-text-dark'}`}>
+                  {formatPrice(displayPrice)}
+                </span>
+              </>
             )}
-            <span className={`text-3xl font-bold ${hasSale ? 'text-secondary' : 'text-text-dark'}`}>
-              {formatPrice(displayPrice)}
-            </span>
           </div>
 
           {/* Sélecteurs */}
           <div className="space-y-6 mb-8">
-            {product.sizes && product.sizes.length > 0 && (
+            {/* Sélecteurs de variantes (si le produit a des variantes) */}
+            {hasVariants && variantOptions.length > 0 && (
+              <>
+                {variantOptions.map((option) => (
+                  <div key={option.id}>
+                    <label className="block text-sm font-medium text-text-dark mb-2">
+                      {option.name}
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      {option.values.map((value) => {
+                        const isSelected = selectedOptions[option.id] === value.id;
+                        const isColor = !!value.hexColor;
+                        
+                        return (
+                          <button
+                            key={value.id}
+                            onClick={() => {
+                              setSelectedOptions(prev => ({
+                                ...prev,
+                                [option.id]: value.id
+                              }));
+                            }}
+                            className={`
+                              ${isColor 
+                                ? `w-10 h-10 rounded-full border-2 transition-all ${
+                                    isSelected 
+                                      ? 'ring-2 ring-offset-2 ring-secondary border-secondary' 
+                                      : 'border-gray-300 hover:border-gray-400'
+                                  }`
+                                : `px-4 py-2 rounded-lg border-2 transition-all ${
+                                    isSelected 
+                                      ? 'border-secondary bg-secondary/10 text-secondary font-medium' 
+                                      : 'border-gray-300 hover:border-gray-400'
+                                  }`
+                              }
+                            `}
+                            style={isColor ? { backgroundColor: value.hexColor } : undefined}
+                            title={value.value}
+                          >
+                            {!isColor && value.value}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {selectedOptions[option.id] && (
+                      <p className="mt-2 text-sm text-green-600 font-medium">
+                        ✓ {option.name}: {option.values.find(v => v.id === selectedOptions[option.id])?.value}
+                      </p>
+                    )}
+                  </div>
+                ))}
+                
+                {/* Info variante sélectionnée */}
+                {selectedVariant && (
+                  <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
+                    <p className="text-sm text-gray-700">
+                      <span className="font-medium">Variante :</span> {getVariantDisplayName(selectedVariant)}
+                      {selectedVariant.sku && (
+                        <span className="text-gray-500 ml-2">(SKU: {selectedVariant.sku})</span>
+                      )}
+                    </p>
+                  </div>
+                )}
+              </>
+            )}
+            
+            {/* Sélecteurs classiques (si pas de variantes) */}
+            {!hasVariants && product.sizes && product.sizes.length > 0 && (
               <div>
                 <SizeSelector
                   sizes={product.sizes}
@@ -216,7 +393,7 @@ export default function ProductDetail() {
                 )}
               </div>
             )}
-            {product.colors && product.colors.length > 0 && (
+            {!hasVariants && product.colors && product.colors.length > 0 && (
               <div>
                 <ColorSelector
                   colors={product.colors}
@@ -230,29 +407,30 @@ export default function ProductDetail() {
                 )}
               </div>
             )}
-            {(product.sizes && product.sizes.length > 0) || (product.colors && product.colors.length > 0) ? (
+            {!hasVariants && ((product.sizes && product.sizes.length > 0) || (product.colors && product.colors.length > 0)) && (
               <p className="text-sm text-text-dark/60 italic">
                 Les tailles et couleurs affichées sont celles disponibles.
               </p>
-            ) : null}
+            )}
+            
             <QuantitySelector
               quantity={quantity}
               onIncrease={() => setQuantity((q) => q + 1)}
               onDecrease={() => setQuantity((q) => Math.max(1, q - 1))}
-              max={product.stock}
-              stockStatus={product.stock > 0 ? 'in_stock' : 'out_of_stock'}
+              max={currentStock}
+              stockStatus={currentStock > 0 ? 'in_stock' : 'out_of_stock'}
             />
-            {product.stock > 0 && product.stock <= 5 && (
+            {currentStock > 0 && currentStock <= 5 && (
               <div className="mt-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
                 <p className="text-sm text-yellow-800 font-medium">
-                  ⚠️ Attention : Il ne reste que {product.stock} exemplaire{product.stock > 1 ? 's' : ''} en stock !
+                  ⚠️ Attention : Il ne reste que {currentStock} exemplaire{currentStock > 1 ? 's' : ''} en stock !
                 </p>
               </div>
             )}
-            {product.stock === 0 && (
+            {currentStock === 0 && (
               <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded-lg">
                 <p className="text-sm text-red-800 font-medium">
-                  ❌ Ce produit est actuellement en rupture de stock.
+                  ❌ {hasVariants && !selectedVariant ? 'Sélectionnez une variante' : 'Ce produit est actuellement en rupture de stock.'}
                 </p>
               </div>
             )}
