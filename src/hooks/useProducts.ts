@@ -3,6 +3,7 @@ import { Product } from '../types';
 import { supabase } from '../lib/supabase';
 import { useCategories } from './useCategories';
 import { getColorHex } from '../config/colors';
+import { normalizeProductImageUrls } from '../lib/imageApi';
 
 export function useProducts() {
   const { categories, isLoading: categoriesLoading } = useCategories();
@@ -92,7 +93,9 @@ export function useProducts() {
             name: p.name,
             category: p.category,
             price: parseFloat(p.price) || 0,
-            images: Array.isArray(p.images) ? p.images : p.image ? [p.image] : [],
+            images: normalizeProductImageUrls(
+              Array.isArray(p.images) ? p.images : p.image ? [p.image] : []
+            ),
             sizes: Array.isArray(p.sizes) ? p.sizes : [],
             colors: colors,
             description: p.description || '',

@@ -5,6 +5,7 @@ import { Button } from '../components/ui/Button';
 import { formatPrice } from '../utils/formatters';
 import { QuantitySelector } from '../components/product/QuantitySelector';
 import toast from 'react-hot-toast';
+import { normalizeImageApiUrl } from '../lib/imageApi';
 
 export default function Cart() {
   const { items, removeItem, updateQuantity, getSubtotal, getTotal, clearCart } = useCart();
@@ -49,7 +50,7 @@ export default function Cart() {
               >
                 <div className="absolute inset-0 bg-gradient-to-br from-neutral-support to-neutral-support/50 animate-pulse" aria-hidden="true" />
                 <img
-                  src={item.product.images[0]}
+                  src={normalizeImageApiUrl(item.product.images[0])}
                   alt={item.product.name}
                   className="w-full h-full object-cover relative z-10"
                   loading="lazy"

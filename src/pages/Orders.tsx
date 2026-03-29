@@ -6,6 +6,7 @@ import { Loading } from '../components/ui/Loading';
 import { formatPrice } from '../utils/formatters';
 import { Order } from '../types';
 import { Link, useNavigate } from 'react-router-dom';
+import { normalizeImageApiUrl } from '../lib/imageApi';
 
 export default function Orders() {
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
@@ -173,7 +174,7 @@ export default function Orders() {
                         <div key={item.id} className="flex items-center gap-3">
                           <div className="w-12 h-12 rounded bg-neutral-support overflow-hidden">
                             <img
-                              src={item.product.images[0]}
+                              src={normalizeImageApiUrl(item.product.images[0])}
                               alt={item.product.name}
                               className="w-full h-full object-cover"
                               loading="lazy"

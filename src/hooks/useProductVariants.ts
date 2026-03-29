@@ -10,6 +10,7 @@ import {
   VariantFormData
 } from '../types/variants';
 import toast from 'react-hot-toast';
+import { normalizeProductImageUrls } from '../lib/imageApi';
 
 interface UseProductVariantsResult {
   variants: ProductVariant[];
@@ -22,7 +23,7 @@ interface UseProductVariantsResult {
   getTotalStock: () => number;
   getPriceRange: (basePrice: number) => { min: number; max: number };
   // CRUD operations
-  saveOption: (option: VariantOptionFormData) => Promise<VariantOption | null>;
+  saveOption: (option: VariantOptionFormData, overrideProductId?: string) => Promise<VariantOption | null>;
   deleteOption: (optionId: string) => Promise<boolean>;
   saveVariant: (variant: VariantFormData, productId: string) => Promise<ProductVariant | null>;
   deleteVariant: (variantId: string) => Promise<boolean>;
@@ -153,7 +154,11 @@ export function useProductVariants(productId: string | null): UseProductVariants
           stock: v.stock,
           weight: v.weight || undefined,
           isAvailable: v.is_available,
-          images: Array.isArray(v.images) ? v.images : (v.images ? [v.images] : undefined),
+          images: (() => {
+            const raw = Array.isArray(v.images) ? v.images : v.images ? [v.images] : [];
+            if (raw.length === 0) return undefined;
+            return normalizeProductImageUrls(raw);
+          })(),
           position: v.position,
           options: selectedOptions,
           createdAt: v.created_at,
@@ -248,9 +253,16 @@ export function useProductVariants(productId: string | null): UseProductVariants
 
   // Sauvegarder une option
   const saveOption = useCallback(async (
-    optionData: VariantOptionFormData
+    optionData: VariantOptionFormData,
+    overrideProductId?: string
   ): Promise<VariantOption | null> => {
-    if (!productId) return null;
+    const actualProductId = overrideProductId || productId;
+    
+    if (!actualProductId) {
+      console.error('saveOption: productId est null', { overrideProductId, productId });
+      toast.error('Le produit doit être sauvegardé avant d\'ajouter des options');
+      return null;
+    }
 
     try {
       let optionId = optionData.id;
@@ -270,7 +282,7 @@ export function useProductVariants(productId: string | null): UseProductVariants
         const { data, error } = await supabase
           .from('variant_options')
           .insert({
-            product_id: productId,
+            product_id: actualProductId,
             name: optionData.name,
             position: maxPosition
           })

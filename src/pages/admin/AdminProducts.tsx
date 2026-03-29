@@ -10,6 +10,13 @@ import { useCategories } from '../../hooks/useCategories';
 import { predefinedColors as sharedPredefinedColors } from '../../config/colors';
 import { getColorNameFromHex } from '../../config/colorNames';
 import { convertToWebP } from '../../utils/imageUtils';
+import {
+  uploadImageToImageApi,
+  isImageApiConfigured,
+  isImageApiUrl,
+  deleteImageFromImageApi,
+  normalizeProductImageUrls,
+} from '../../lib/imageApi';
 import { useAdminAuth } from '../../context/AdminAuthContext';
 import { useProductVariants } from '../../hooks/useProductVariants';
 import { 
@@ -156,7 +163,9 @@ export default function AdminProducts() {
             name: p.name,
             category: p.category,
             price: p.price,
-            images: Array.isArray(p.images) ? p.images : [p.image || ''],
+            images: normalizeProductImageUrls(
+              Array.isArray(p.images) ? p.images : [p.image || '']
+            ).filter(Boolean),
             sizes: Array.isArray(p.sizes) ? p.sizes : [],
             colors: colors,
             description: p.description || '',
@@ -351,37 +360,19 @@ export default function AdminProducts() {
         return null;
       }
 
-      // Convertir l'image en WebP
-      const webpFile = await convertToWebP(file);
-
-      // Générer un nom de fichier unique avec timestamp et random pour éviter les collisions
-      const fileExt = webpFile.name.split('.').pop();
-      const timestamp = Date.now();
-      const random = Math.random().toString(36).substring(7);
-      const fileName = `products/${timestamp}-${random}.${fileExt}`;
-
-      // Upload vers Supabase Storage
-      const { error: uploadError } = await supabase.storage
-        .from('products')
-        .upload(fileName, webpFile, {
-          cacheControl: '3600',
-          upsert: false,
-        });
-
-      if (uploadError) {
-        if (uploadError.message.includes('Bucket not found')) {
-          toast.error('Le bucket "products" n\'existe pas. Veuillez le créer dans Supabase Storage.');
-        } else {
-          throw uploadError;
-        }
+      if (!isImageApiConfigured()) {
+        toast.error(
+          'API images non configurée. Définissez VITE_IMAGE_API_BASE_URL et VITE_IMAGE_API_KEY dans .env'
+        );
         return null;
       }
 
-      // Obtenir l'URL publique
-      const { data: { publicUrl } } = supabase.storage
-        .from('products')
-        .getPublicUrl(fileName);
-
+      const webpFile = await convertToWebP(file);
+      const publicUrl = await uploadImageToImageApi(webpFile);
+      if (!publicUrl) {
+        toast.error('Réponse API images invalide (urls attendu)');
+        return null;
+      }
       return publicUrl;
     } catch (error: any) {
       console.error('Erreur lors de l\'upload:', error);
@@ -463,9 +454,15 @@ export default function AdminProducts() {
 
   const handleRemoveImage = async (index: number) => {
     const imageToRemove = formData.images[index];
-    
-    // Si l'image provient de Supabase Storage, la supprimer du bucket
-    if (imageToRemove && imageToRemove.includes('supabase.co/storage')) {
+
+    if (imageToRemove && isImageApiUrl(imageToRemove)) {
+      const deleted = await deleteImageFromImageApi(imageToRemove);
+      if (deleted) {
+        toast.success('Image supprimée du serveur');
+      } else {
+        toast.error('Erreur lors de la suppression de l\'image sur l\'API');
+      }
+    } else if (imageToRemove && imageToRemove.includes('supabase.co/storage')) {
       const deleted = await deleteImageFromStorage(imageToRemove, 'products');
       if (deleted) {
         toast.success('Image supprimée du stockage');
@@ -520,13 +517,47 @@ export default function AdminProducts() {
         if (error) throw error;
         toast.success('Produit modifié avec succès');
       } else {
-        const { error } = await supabase.from('products').insert(productData);
+        const { data, error } = await supabase
+          .from('products')
+          .insert(productData)
+          .select()
+          .single();
 
         if (error) throw error;
+        
+        // Mettre à jour editingProduct avec le nouveau produit créé
+        if (data) {
+          const newProduct: Product = {
+            id: data.id,
+            name: data.name,
+            category: data.category,
+            price: data.price,
+            description: data.description || '',
+            composition: data.composition || '',
+            stock: data.stock || 0,
+            sizes: Array.isArray(data.sizes) ? data.sizes : [],
+            colors: data.colors || [],
+            images: Array.isArray(data.images) ? data.images : [],
+            rating: data.rating || 0,
+            reviewCount: data.review_count || 0,
+            isNew: data.is_new || false,
+            isOnSale: data.is_on_sale || false,
+            salePrice: data.sale_price,
+            brand: data.brand,
+            hasVariants: data.has_variants || false,
+          };
+          setEditingProduct(newProduct);
+        }
+        
         toast.success('Produit créé avec succès');
       }
 
-      setIsOffcanvasOpen(false);
+      // Ne pas fermer le panneau si on vient de créer le produit et qu'il a des variantes
+      if (!editingProduct && formData.hasVariants) {
+        // Garder le panneau ouvert pour permettre d'ajouter des variantes
+      } else {
+        setIsOffcanvasOpen(false);
+      }
       loadProducts();
     } catch (error: any) {
       console.error('Erreur lors de la sauvegarde:', error);
@@ -563,9 +594,11 @@ export default function AdminProducts() {
           imagesToDelete.push(productData.image);
         }
 
-        // Supprimer chaque image du bucket
         for (const imageUrl of imagesToDelete) {
-          if (imageUrl && imageUrl.includes('supabase.co/storage')) {
+          if (!imageUrl) continue;
+          if (isImageApiUrl(imageUrl)) {
+            await deleteImageFromImageApi(imageUrl);
+          } else if (imageUrl.includes('supabase.co/storage')) {
             await deleteImageFromStorage(imageUrl, 'products');
           }
         }
@@ -1148,6 +1181,10 @@ export default function AdminProducts() {
                     <h4 className="text-sm font-semibold text-gray-700">Options (ex: Taille, Couleur)</h4>
                     <Button
                       onClick={() => {
+                        if (!editingProduct) {
+                          toast.error('Veuillez d\'abord enregistrer le produit avant d\'ajouter des options');
+                          return;
+                        }
                         setEditingOption(null);
                         setOptionFormData({ name: '', values: [{ value: '' }] });
                         setIsOptionModalOpen(true);
@@ -1363,6 +1400,13 @@ export default function AdminProducts() {
         title={editingOption ? 'Modifier l\'option' : 'Ajouter une option'}
         size="md"
       >
+        {!editingProduct && (
+          <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+            <p className="text-sm text-amber-800">
+              ⚠️ Veuillez d'abord enregistrer le produit avant d'ajouter des options.
+            </p>
+          </div>
+        )}
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -1529,6 +1573,16 @@ export default function AdminProducts() {
             </Button>
             <Button
               onClick={async () => {
+                // Vérifier que le produit est sauvegardé
+                if (!editingProduct || !editingProduct.id) {
+                  toast.error('Veuillez d\'abord enregistrer le produit avant d\'ajouter des options');
+                  setIsOptionModalOpen(false);
+                  return;
+                }
+                
+                console.log('Ajout option - editingProduct.id:', editingProduct.id);
+                console.log('Ajout option - optionFormData:', optionFormData);
+                
                 if (!optionFormData.name.trim()) {
                   toast.error('Le nom de l\'option est requis');
                   return;
@@ -1538,11 +1592,26 @@ export default function AdminProducts() {
                   toast.error('Ajoutez au moins une valeur');
                   return;
                 }
-                await saveOption({
+                
+                console.log('Appel saveOption avec:', {
+                  ...optionFormData,
+                  values: validValues,
+                  productId: editingProduct.id
+                });
+                
+                // Passer explicitement le productId pour éviter les problèmes de timing
+                const result = await saveOption({
                   ...optionFormData,
                   values: validValues
-                });
-                setIsOptionModalOpen(false);
+                }, editingProduct.id);
+                
+                console.log('Résultat saveOption:', result);
+                
+                if (result) {
+                  setIsOptionModalOpen(false);
+                  // Réinitialiser le formulaire
+                  setOptionFormData({ name: '', values: [{ value: '' }] });
+                }
               }}
               className="bg-secondary hover:bg-secondary/90"
             >
@@ -1784,7 +1853,15 @@ export default function AdminProducts() {
                       />
                       <button
                         type="button"
-                        onClick={() => {
+                        onClick={async () => {
+                          const url = variantFormData.images[index];
+                          if (url && isImageApiUrl(url)) {
+                            const ok = await deleteImageFromImageApi(url);
+                            if (ok) toast.success('Image supprimée du serveur');
+                          } else if (url && url.includes('supabase.co/storage')) {
+                            const ok = await deleteImageFromStorage(url, 'products');
+                            if (ok) toast.success('Image supprimée du stockage');
+                          }
                           const newImages = variantFormData.images.filter((_, i) => i !== index);
                           setVariantFormData({ ...variantFormData, images: newImages });
                         }}

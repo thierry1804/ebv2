@@ -10,6 +10,7 @@ import { formatPrice } from '../utils/formatters';
 import { Address } from '../types';
 import toast from 'react-hot-toast';
 import { ArrowLeft } from 'lucide-react';
+import { normalizeImageApiUrl } from '../lib/imageApi';
 
 type Step = 'shipping' | 'payment' | 'confirmation';
 
@@ -515,7 +516,7 @@ export default function Checkout() {
                     <div className="w-16 h-16 rounded bg-neutral-support relative overflow-hidden">
                       <div className="absolute inset-0 bg-gradient-to-br from-neutral-support to-neutral-support/50 animate-pulse" aria-hidden="true" />
                       <img
-                        src={item.product.images[0]}
+                        src={normalizeImageApiUrl(item.product.images[0])}
                         alt={item.product.name}
                         className="w-full h-full object-cover relative z-10"
                         loading="lazy"

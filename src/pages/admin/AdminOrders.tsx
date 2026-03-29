@@ -8,6 +8,7 @@ import { Button } from '../../components/ui/Button';
 import { usePromoCodeRefunds } from '../../hooks/usePromoCodeRefunds';
 import { usePromoCodes } from '../../hooks/usePromoCodes';
 import toast from 'react-hot-toast';
+import { normalizeImageApiUrl } from '../../lib/imageApi';
 
 export default function AdminOrders() {
   const [orders, setOrders] = useState<Order[]>([]);
@@ -323,7 +324,7 @@ export default function AdminOrders() {
                         <div key={item.id} className="flex items-center gap-3 p-2 bg-gray-50 rounded">
                           <div className="w-12 h-12 rounded bg-gray-200 overflow-hidden">
                             <img
-                              src={item.product.images[0]}
+                              src={normalizeImageApiUrl(item.product.images[0])}
                               alt={item.product.name}
                               className="w-full h-full object-cover"
                             />
@@ -472,7 +473,7 @@ export default function AdminOrders() {
                   <div key={item.id} className="flex items-center gap-4 p-3 bg-gray-50 rounded-lg">
                     <div className="w-16 h-16 rounded bg-gray-200 overflow-hidden">
                       <img
-                        src={item.product.images[0]}
+                        src={normalizeImageApiUrl(item.product.images[0])}
                         alt={item.product.name}
                         className="w-full h-full object-cover"
                       />

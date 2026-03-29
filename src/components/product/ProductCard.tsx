@@ -5,6 +5,7 @@ import { Product } from '../../types';
 import { formatPrice } from '../../utils/formatters';
 import { useWishlist } from '../../context/WishlistContext';
 import { cn } from '../../utils/cn';
+import { normalizeImageApiUrl } from '../../lib/imageApi';
 
 interface ProductCardProps {
   product: Product;
@@ -99,7 +100,7 @@ export function ProductCard({ product }: ProductCardProps) {
           
           {/* Image actuelle */}
           <img
-            src={product.images[currentImageIndex]}
+            src={normalizeImageApiUrl(product.images[currentImageIndex])}
             alt={product.name}
             className={cn(
               "absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-opacity duration-[800ms] ease-in-out",
@@ -118,7 +119,7 @@ export function ProductCard({ product }: ProductCardProps) {
           {/* Image suivante pour le crossfade */}
           {hasMultipleImages && (
             <img
-              src={product.images[nextImageIndex]}
+              src={normalizeImageApiUrl(product.images[nextImageIndex])}
               alt={product.name}
               className={cn(
                 "absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-opacity duration-[800ms] ease-in-out",

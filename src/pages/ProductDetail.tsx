@@ -18,6 +18,7 @@ import toast from 'react-hot-toast';
 import { SEO } from '../components/seo/SEO';
 import { analytics } from '../hooks/useGoogleAnalytics';
 import { useProductVariants } from '../hooks/useProductVariants';
+import { normalizeImageApiUrl, normalizeProductImageUrls } from '../lib/imageApi';
 import { ProductVariant, getVariantDisplayName } from '../types/variants';
 
 export default function ProductDetail() {
@@ -170,7 +171,8 @@ export default function ProductDetail() {
     toast.success('Produit ajouté au panier');
   };
 
-  const productImage = product.images && product.images.length > 0 ? product.images[0] : '';
+  const productImage =
+    product.images && product.images.length > 0 ? normalizeImageApiUrl(product.images[0]) : '';
   const productDescription = product.description || `${product.name} - Mode féminine haut de gamme disponible sur ByValsue`;
 
   return (
@@ -187,7 +189,7 @@ export default function ProductDetail() {
           '@type': 'Product',
           name: product.name,
           description: productDescription,
-          image: product.images || [],
+          image: normalizeProductImageUrls(product.images || []),
           brand: {
             '@type': 'Brand',
             name: 'ByValsue',
@@ -472,7 +474,11 @@ export default function ProductDetail() {
         <SocialShare
           productName={product.name}
           productUrl={`/produit/${product.id}`}
-          productImage={product.images && product.images.length > 0 ? product.images[0] : undefined}
+          productImage={
+            product.images && product.images.length > 0
+              ? normalizeImageApiUrl(product.images[0])
+              : undefined
+          }
           productDescription={product.description}
         />
       </div>

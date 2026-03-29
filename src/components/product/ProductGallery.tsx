@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { ImageZoom } from '../ui/ImageZoom';
+import { normalizeImageApiUrl } from '../../lib/imageApi';
 
 interface ProductGalleryProps {
   images: string[];
@@ -106,7 +107,7 @@ export function ProductGallery({ images, productName }: ProductGalleryProps) {
         onTouchEnd={onTouchEnd}
       >
         <ImageZoom
-          src={images[selectedImage]}
+          src={normalizeImageApiUrl(images[selectedImage])}
           alt={`${productName} - Vue ${selectedImage + 1} sur ${images.length}`}
           className="w-full h-full object-cover select-none"
         />
@@ -147,7 +148,7 @@ export function ProductGallery({ images, productName }: ProductGalleryProps) {
                   tabIndex={0}
                 >
                   <img
-                    src={image}
+                    src={normalizeImageApiUrl(image)}
                     alt={`${productName} - Vue ${index + 1}`}
                     className="w-full h-full object-cover"
                     loading="lazy"
