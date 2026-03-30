@@ -7,8 +7,12 @@ import { Offcanvas } from '../../components/ui/Offcanvas';
 import toast from 'react-hot-toast';
 import { useAdminAuth } from '../../context/AdminAuthContext';
 import { formatPrice } from '../../utils/formatters';
+import { useConfirm } from '../../components/ui/ConfirmDialog';
+import { formatAppError } from '../../utils/errors';
+import { PageLoading } from '../../components/ui/PageLoading';
 
 export default function AdminPromoCodes() {
+  const confirm = useConfirm();
   const { adminUser } = useAdminAuth();
   const [promoCodes, setPromoCodes] = useState<PromoCode[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -183,23 +187,30 @@ export default function AdminPromoCodes() {
 
       setIsOffcanvasOpen(false);
       loadPromoCodes();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Erreur lors de la sauvegarde:', error);
-      toast.error(error.message || 'Erreur lors de la sauvegarde');
+      toast.error(formatAppError(error, 'Erreur lors de la sauvegarde'));
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Êtes-vous sûr de vouloir supprimer ce code promo ?')) return;
+    const ok = await confirm({
+      title: 'Supprimer le code promo',
+      message: 'Cette action est définitive.',
+      confirmLabel: 'Supprimer',
+      cancelLabel: 'Annuler',
+      variant: 'danger',
+    });
+    if (!ok) return;
 
     try {
       const { error } = await supabase.from('promo_codes').delete().eq('id', id);
       if (error) throw error;
       toast.success('Code promo supprimé avec succès');
       loadPromoCodes();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Erreur lors de la suppression:', error);
-      toast.error('Erreur lors de la suppression');
+      toast.error(formatAppError(error, 'Erreur lors de la suppression'));
     }
   };
 
@@ -213,9 +224,9 @@ export default function AdminPromoCodes() {
       if (error) throw error;
       toast.success(`Code promo ${promoCode.isActive ? 'désactivé' : 'activé'}`);
       loadPromoCodes();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Erreur:', error);
-      toast.error('Erreur lors de la mise à jour');
+      toast.error(formatAppError(error, 'Erreur lors de la mise à jour'));
     }
   };
 
@@ -240,7 +251,7 @@ export default function AdminPromoCodes() {
   }, [promoCodes]);
 
   if (isLoading) {
-    return <div className="text-center py-8">Chargement...</div>;
+    return <PageLoading />;
   }
 
   return (

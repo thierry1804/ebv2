@@ -7,10 +7,14 @@ import { ProductCard } from '../components/product/ProductCard';
 import { Loading } from '../components/ui/Loading';
 import { Link, useNavigate } from 'react-router-dom';
 import { Address } from '../types';
+import toast from 'react-hot-toast';
+import { useConfirm } from '../components/ui/ConfirmDialog';
+import { formatAppError } from '../utils/errors';
 
 type Tab = 'profile' | 'addresses' | 'wishlist' | 'settings';
 
 export default function Account() {
+  const confirm = useConfirm();
   const { user, isAuthenticated, logout } = useAuth();
   const { items: wishlistItems } = useWishlist();
   const { addresses, isLoading: isLoadingAddresses, error: addressesError, getUserAddresses, createAddress, updateAddress, deleteAddress, setAddresses } = useAddresses();
@@ -96,7 +100,7 @@ export default function Account() {
     if (!user?.id) return;
 
     if (!formData.label || !formData.firstName || !formData.lastName || !formData.street || !formData.city || !formData.phone) {
-      alert('Veuillez remplir tous les champs obligatoires');
+      toast.error('Veuillez remplir tous les champs obligatoires');
       return;
     }
 
@@ -117,23 +121,43 @@ export default function Account() {
       if (updated) {
         await loadAddresses();
         handleCancelForm();
+      } else {
+        toast.error(
+          formatAppError(addressesError ? new Error(addressesError) : undefined, 'Impossible d’enregistrer l’adresse')
+        );
       }
     } else {
       const created = await createAddress(user.id, addressData);
       if (created) {
         await loadAddresses();
         handleCancelForm();
+      } else {
+        toast.error(
+          formatAppError(addressesError ? new Error(addressesError) : undefined, 'Impossible d’ajouter l’adresse')
+        );
       }
     }
   };
 
   const handleDeleteAddress = async (addressId: string) => {
     if (!user?.id) return;
-    if (!confirm('Êtes-vous sûr de vouloir supprimer cette adresse ?')) return;
+
+    const ok = await confirm({
+      title: 'Supprimer l’adresse',
+      message: 'Cette adresse sera retirée de votre compte.',
+      confirmLabel: 'Supprimer',
+      cancelLabel: 'Annuler',
+      variant: 'danger',
+    });
+    if (!ok) return;
 
     const success = await deleteAddress(addressId, user.id);
     if (success) {
       await loadAddresses();
+    } else {
+      toast.error(
+        formatAppError(addressesError ? new Error(addressesError) : undefined, 'Impossible de supprimer l’adresse')
+      );
     }
   };
 

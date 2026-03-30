@@ -8,8 +8,12 @@ import { Offcanvas } from '../../components/ui/Offcanvas';
 import { markdownToHtml } from '../../utils/markdown';
 import { convertToWebP } from '../../utils/imageUtils';
 import { useAdminAuth } from '../../context/AdminAuthContext';
+import { useConfirm } from '../../components/ui/ConfirmDialog';
+import { formatAppError } from '../../utils/errors';
+import { PageLoading } from '../../components/ui/PageLoading';
 
 export default function AdminArticles() {
+  const confirm = useConfirm();
   const { adminUser } = useAdminAuth();
   const [articles, setArticles] = useState<DatabaseBlogPost[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -42,9 +46,9 @@ export default function AdminArticles() {
 
       if (error) throw error;
       setArticles(data || []);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Erreur lors du chargement des articles:', error);
-      toast.error('Erreur lors du chargement des articles');
+      toast.error(formatAppError(error, 'Erreur lors du chargement des articles'));
     } finally {
       setIsLoading(false);
     }
@@ -121,9 +125,9 @@ export default function AdminArticles() {
 
       setIsModalOpen(false);
       loadArticles();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Erreur lors de la sauvegarde:', error);
-      toast.error(error.message || 'Erreur lors de la sauvegarde');
+      toast.error(formatAppError(error, 'Erreur lors de la sauvegarde'));
     }
   };
 
@@ -210,9 +214,9 @@ export default function AdminArticles() {
       setFormData({ ...formData, image: publicUrl });
 
       toast.success('Image uploadée avec succès');
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Erreur lors de l\'upload:', error);
-      toast.error(error.message || 'Erreur lors de l\'upload de l\'image');
+      toast.error(formatAppError(error, 'Erreur lors de l\'upload de l\'image'));
     } finally {
       setUploadingImage(false);
     }
@@ -246,7 +250,14 @@ export default function AdminArticles() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Êtes-vous sûr de vouloir supprimer cet article ?')) return;
+    const ok = await confirm({
+      title: 'Supprimer l’article',
+      message: 'Cette action est définitive.',
+      confirmLabel: 'Supprimer',
+      cancelLabel: 'Annuler',
+      variant: 'danger',
+    });
+    if (!ok) return;
 
     try {
       // Récupérer l'article pour obtenir l'URL de l'image
@@ -264,9 +275,9 @@ export default function AdminArticles() {
       if (error) throw error;
       toast.success('Article supprimé avec succès');
       loadArticles();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Erreur lors de la suppression:', error);
-      toast.error('Erreur lors de la suppression');
+      toast.error(formatAppError(error, 'Erreur lors de la suppression'));
     }
   };
 
@@ -285,14 +296,14 @@ export default function AdminArticles() {
         article.is_published ? 'Article dépublié' : 'Article publié'
       );
       loadArticles();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Erreur:', error);
-      toast.error('Erreur lors de la modification');
+      toast.error(formatAppError(error, 'Erreur lors de la modification'));
     }
   };
 
   if (isLoading) {
-    return <div className="text-center py-8">Chargement...</div>;
+    return <PageLoading />;
   }
 
   return (

@@ -6,8 +6,10 @@ import { formatPrice } from '../utils/formatters';
 import { QuantitySelector } from '../components/product/QuantitySelector';
 import toast from 'react-hot-toast';
 import { normalizeImageApiUrl } from '../lib/imageApi';
+import { useConfirm } from '../components/ui/ConfirmDialog';
 
 export default function Cart() {
+  const confirm = useConfirm();
   const { items, removeItem, updateQuantity, getSubtotal, getTotal, clearCart } = useCart();
   const shippingCost = getSubtotal() >= 200000 ? 0 : 10000;
 
@@ -112,11 +114,17 @@ export default function Cart() {
           <div className="flex justify-end pt-4">
             <Button 
               variant="outline" 
-              onClick={() => {
-                if (window.confirm('Êtes-vous sûr de vouloir vider votre panier ?')) {
-                  clearCart();
-                  toast.success('Panier vidé');
-                }
+              onClick={async () => {
+                const ok = await confirm({
+                  title: 'Vider le panier',
+                  message: 'Tous les articles seront retirés de votre panier.',
+                  confirmLabel: 'Vider le panier',
+                  cancelLabel: 'Annuler',
+                  variant: 'danger',
+                });
+                if (!ok) return;
+                clearCart();
+                toast.success('Panier vidé');
               }}
             >
               Vider le panier

@@ -7,6 +7,7 @@ import { Modal } from '../../components/ui/Modal';
 import toast from 'react-hot-toast';
 import { convertToWebP } from '../../utils/imageUtils';
 import { useAdminAuth } from '../../context/AdminAuthContext';
+import { PageLoading } from '../../components/ui/PageLoading';
 
 export default function AdminLandingPage() {
   const { adminUser } = useAdminAuth();
@@ -925,7 +926,7 @@ export default function AdminLandingPage() {
   };
 
   if (isLoading) {
-    return <div className="text-center py-8">Chargement...</div>;
+    return <PageLoading />;
   }
 
   return (

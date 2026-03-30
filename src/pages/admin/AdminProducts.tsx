@@ -1,11 +1,12 @@
 import { useEffect, useState, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Product } from '../../types';
-import { Plus, Edit, Trash2, Upload, X, Check, Package, Layers, ChevronDown, ChevronUp } from 'lucide-react';
+import { Plus, Edit, Trash2, Upload, X, Check, Package, Layers, ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import toast from 'react-hot-toast';
 import { Offcanvas } from '../../components/ui/Offcanvas';
 import { Modal } from '../../components/ui/Modal';
+import { PageLoading } from '../../components/ui/PageLoading';
 import { useCategories } from '../../hooks/useCategories';
 import { predefinedColors as sharedPredefinedColors } from '../../config/colors';
 import { getColorNameFromHex } from '../../config/colorNames';
@@ -15,6 +16,7 @@ import {
   isImageApiConfigured,
   isImageApiUrl,
   deleteImageFromImageApi,
+  normalizeImageApiUrl,
   normalizeProductImageUrls,
 } from '../../lib/imageApi';
 import { useAdminAuth } from '../../context/AdminAuthContext';
@@ -26,8 +28,11 @@ import {
   VariantFormData,
   getVariantDisplayName 
 } from '../../types/variants';
+import { useConfirm } from '../../components/ui/ConfirmDialog';
+import { formatAppError } from '../../utils/errors';
 
 export default function AdminProducts() {
+  const confirm = useConfirm();
   const { adminUser } = useAdminAuth();
   const { categories } = useCategories();
   const [products, setProducts] = useState<Product[]>([]);
@@ -51,6 +56,8 @@ export default function AdminProducts() {
     hasVariants: false,
   });
   const [isUploading, setIsUploading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [selectedColors, setSelectedColors] = useState<Array<{name: string, hex: string, custom: boolean}>>([]);
   const [selectedColorHex, setSelectedColorHex] = useState<string>('#1abc9c');
   const [customColorName, setCustomColorName] = useState('');
@@ -452,6 +459,20 @@ export default function AdminProducts() {
     }
   };
 
+  /** Supprime un fichier distant : API images eshop ou bucket Supabase (legacy). */
+  const deleteRemoteProductImage = async (rawUrl: string): Promise<void> => {
+    const trimmed = typeof rawUrl === 'string' ? rawUrl.trim() : '';
+    if (!trimmed) return;
+    const imageUrl = normalizeImageApiUrl(trimmed);
+    if (isImageApiUrl(imageUrl)) {
+      await deleteImageFromImageApi(imageUrl);
+      return;
+    }
+    if (imageUrl.includes('supabase.co/storage')) {
+      await deleteImageFromStorage(imageUrl, 'products');
+    }
+  };
+
   const handleRemoveImage = async (index: number) => {
     const imageToRemove = formData.images[index];
 
@@ -476,6 +497,21 @@ export default function AdminProducts() {
   };
 
   const handleSave = async () => {
+    if (!formData.name.trim()) {
+      toast.error('Le nom du produit est obligatoire');
+      return;
+    }
+    if (!formData.category) {
+      toast.error('La catégorie est obligatoire');
+      return;
+    }
+    const priceNum = parseFloat(formData.price);
+    if (formData.price === '' || Number.isNaN(priceNum) || priceNum < 0) {
+      toast.error('Indiquez un prix valide (nombre positif)');
+      return;
+    }
+
+    setIsSaving(true);
     try {
       const sizesArray = formData.sizes.split(',').map((s) => s.trim()).filter(Boolean);
       // Stocker les couleurs avec leur code hexadécimal
@@ -494,7 +530,7 @@ export default function AdminProducts() {
       const productData = {
         name: formData.name,
         category: formData.category,
-        price: parseFloat(formData.price),
+        price: priceNum,
         description: formData.description,
         composition: formData.composition,
         stock: formData.hasVariants ? 0 : parseInt(formData.stock), // Stock géré par variantes si activé
@@ -559,20 +595,34 @@ export default function AdminProducts() {
         setIsOffcanvasOpen(false);
       }
       loadProducts();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Erreur lors de la sauvegarde:', error);
-      toast.error(error.message || 'Erreur lors de la sauvegarde');
+      toast.error(formatAppError(error, 'Erreur lors de la sauvegarde'), { duration: 6000 });
+    } finally {
+      setIsSaving(false);
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Êtes-vous sûr de vouloir supprimer ce produit ?')) return;
+    if (deletingId) return;
+
+    const ok = await confirm({
+      title: 'Supprimer le produit',
+      message:
+        'Cette action est définitive : le produit, ses variantes et les fichiers images associés seront supprimés.',
+      confirmLabel: 'Supprimer',
+      cancelLabel: 'Annuler',
+      variant: 'danger',
+    });
+    if (!ok) return;
+
+    setDeletingId(id);
+    const toastId = toast.loading('Suppression en cours…');
 
     try {
-      // Récupérer le produit pour obtenir les images
       const { data: productData, error: fetchError } = await supabase
         .from('products')
-        .select('images, image')
+        .select('images')
         .eq('id', id)
         .single();
 
@@ -580,43 +630,49 @@ export default function AdminProducts() {
         console.error('Erreur lors de la récupération du produit:', fetchError);
       }
 
-      // Supprimer toutes les images du bucket
-      if (productData) {
-        const imagesToDelete: string[] = [];
-        
-        // Ajouter les images du tableau images
-        if (Array.isArray(productData.images)) {
-          imagesToDelete.push(...productData.images);
-        }
-        
-        // Ajouter l'image unique si elle existe
-        if (productData.image && !imagesToDelete.includes(productData.image)) {
-          imagesToDelete.push(productData.image);
-        }
+      const { data: variantRows, error: variantFetchError } = await supabase
+        .from('product_variants')
+        .select('images')
+        .eq('product_id', id);
 
-        for (const imageUrl of imagesToDelete) {
-          if (!imageUrl) continue;
-          if (isImageApiUrl(imageUrl)) {
-            await deleteImageFromImageApi(imageUrl);
-          } else if (imageUrl.includes('supabase.co/storage')) {
-            await deleteImageFromStorage(imageUrl, 'products');
+      if (variantFetchError) {
+        console.error('Erreur lors de la récupération des variantes:', variantFetchError);
+      }
+
+      const imagesToDelete: string[] = [];
+      if (productData && Array.isArray(productData.images)) {
+        imagesToDelete.push(...productData.images);
+      }
+      if (variantRows) {
+        for (const row of variantRows) {
+          if (Array.isArray(row.images)) {
+            imagesToDelete.push(...row.images);
           }
         }
+      }
+
+      const uniqueUrls = [
+        ...new Set(imagesToDelete.map((u) => String(u).trim()).filter(Boolean)),
+      ];
+      for (const rawUrl of uniqueUrls) {
+        await deleteRemoteProductImage(rawUrl);
       }
 
       // Supprimer le produit de la base de données
       const { error } = await supabase.from('products').delete().eq('id', id);
       if (error) throw error;
-      toast.success('Produit supprimé avec succès');
+      toast.success('Produit supprimé avec succès', { id: toastId });
       loadProducts();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Erreur lors de la suppression:', error);
-      toast.error('Erreur lors de la suppression');
+      toast.error(formatAppError(error, 'Erreur lors de la suppression'), { id: toastId });
+    } finally {
+      setDeletingId(null);
     }
   };
 
   if (isLoading) {
-    return <div className="text-center py-8">Chargement...</div>;
+    return <PageLoading />;
   }
 
   return (
@@ -658,10 +714,26 @@ export default function AdminProducts() {
                 </td>
               </tr>
             ) : (
-              products.map((product) => (
-                <tr key={product.id} className="hover:bg-gray-50">
+              products.map((product) => {
+                const isDeleting = deletingId === product.id;
+                return (
+                <tr
+                  key={product.id}
+                  className={`transition-[opacity,background-color] duration-200 ease-out hover:bg-gray-50 ${
+                    isDeleting ? 'bg-amber-50/90 opacity-75 pointer-events-none' : ''
+                  }`}
+                >
                   <td className="px-6 py-4">
-                    <div className="font-medium text-text-dark">{product.name}</div>
+                    <div className="font-medium text-text-dark flex items-center gap-2">
+                      {isDeleting && (
+                        <Loader2
+                          className="shrink-0 animate-spin text-amber-700"
+                          size={16}
+                          aria-hidden
+                        />
+                      )}
+                      <span>{product.name}</span>
+                    </div>
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-600">{product.category}</td>
                   <td className="px-6 py-4">
@@ -692,23 +764,34 @@ export default function AdminProducts() {
                   <td className="px-6 py-4 text-right">
                     <div className="flex items-center justify-end gap-2">
                       <button
+                        type="button"
                         onClick={() => handleEdit(product)}
-                        className="p-2 text-blue-600 hover:text-blue-900"
+                        disabled={isDeleting || Boolean(deletingId)}
+                        className="p-2 text-blue-600 hover:text-blue-900 disabled:opacity-40 disabled:cursor-not-allowed"
                         title="Modifier"
                       >
                         <Edit size={18} />
                       </button>
                       <button
+                        type="button"
                         onClick={() => handleDelete(product.id)}
-                        className="p-2 text-red-600 hover:text-red-900"
-                        title="Supprimer"
+                        disabled={isDeleting || Boolean(deletingId)}
+                        className="p-2 text-red-600 hover:text-red-900 disabled:opacity-40 disabled:cursor-not-allowed min-w-[42px] min-h-[42px] inline-flex items-center justify-center"
+                        title={isDeleting ? 'Suppression…' : 'Supprimer'}
+                        aria-busy={isDeleting}
+                        aria-label={isDeleting ? 'Suppression en cours' : 'Supprimer le produit'}
                       >
-                        <Trash2 size={18} />
+                        {isDeleting ? (
+                          <Loader2 className="animate-spin" size={18} aria-hidden />
+                        ) : (
+                          <Trash2 size={18} />
+                        )}
                       </button>
                     </div>
                   </td>
                 </tr>
-              ))
+                );
+              })
             )}
           </tbody>
         </table>
@@ -716,20 +799,38 @@ export default function AdminProducts() {
 
       <Offcanvas
         isOpen={isOffcanvasOpen}
-        onClose={() => setIsOffcanvasOpen(false)}
+        onClose={() => {
+          if (!isSaving) setIsOffcanvasOpen(false);
+        }}
         title={editingProduct ? 'Modifier le produit' : 'Nouveau produit'}
         position="right"
         width="xl"
         footer={
           <div className="flex flex-col sm:flex-row justify-end gap-3">
             <Button
+              type="button"
               onClick={() => setIsOffcanvasOpen(false)}
-              className="bg-gray-200 hover:bg-gray-300 text-gray-800 w-full sm:w-auto"
+              disabled={isSaving}
+              className="bg-gray-200 hover:bg-gray-300 text-gray-800 w-full sm:w-auto disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Annuler
             </Button>
-            <Button onClick={handleSave} className="bg-secondary hover:bg-secondary/90 w-full sm:w-auto">
-              {editingProduct ? 'Modifier' : 'Créer'}
+            <Button
+              type="button"
+              onClick={handleSave}
+              disabled={isSaving}
+              className="bg-secondary hover:bg-secondary/90 w-full sm:w-auto disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2"
+            >
+              {isSaving ? (
+                <>
+                  <Loader2 className="animate-spin shrink-0" size={18} aria-hidden />
+                  <span>Enregistrement…</span>
+                </>
+              ) : editingProduct ? (
+                'Modifier'
+              ) : (
+                'Créer'
+              )}
             </Button>
           </div>
         }
@@ -1033,10 +1134,18 @@ export default function AdminProducts() {
               />
               <label
                 htmlFor="images-upload"
-                className="inline-flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg cursor-pointer transition-colors"
+                className={`inline-flex items-center gap-2 px-4 py-2 bg-gray-100 rounded-lg transition-colors ${
+                  isUploading
+                    ? 'cursor-wait opacity-80 pointer-events-none'
+                    : 'hover:bg-gray-200 cursor-pointer'
+                }`}
               >
-                <Upload size={18} />
-                {isUploading ? 'Upload en cours...' : 'Uploader des images'}
+                {isUploading ? (
+                  <Loader2 className="animate-spin shrink-0" size={18} aria-hidden />
+                ) : (
+                  <Upload size={18} aria-hidden />
+                )}
+                {isUploading ? 'Traitement des images…' : 'Uploader des images'}
               </label>
             </div>
 
@@ -1233,9 +1342,16 @@ export default function AdminProducts() {
                             <button
                               type="button"
                               onClick={async () => {
-                                if (confirm('Supprimer cette option ?')) {
-                                  await deleteOption(option.id);
-                                }
+                                const accepted = await confirm({
+                                  title: 'Supprimer l’option',
+                                  message:
+                                    'Les variantes qui utilisent cette option peuvent être affectées. Continuer ?',
+                                  confirmLabel: 'Supprimer',
+                                  cancelLabel: 'Annuler',
+                                  variant: 'danger',
+                                });
+                                if (!accepted) return;
+                                await deleteOption(option.id);
                               }}
                               className="text-red-600 hover:text-red-800"
                             >
@@ -1363,9 +1479,15 @@ export default function AdminProducts() {
                                     <button
                                       type="button"
                                       onClick={async () => {
-                                        if (confirm('Supprimer cette variante ?')) {
-                                          await deleteVariant(variant.id);
-                                        }
+                                        const accepted = await confirm({
+                                          title: 'Supprimer la variante',
+                                          message: 'Cette variante sera supprimée définitivement.',
+                                          confirmLabel: 'Supprimer',
+                                          cancelLabel: 'Annuler',
+                                          variant: 'danger',
+                                        });
+                                        if (!accepted) return;
+                                        await deleteVariant(variant.id);
                                       }}
                                       className="p-1 text-red-600 hover:text-red-800"
                                     >
@@ -1788,10 +1910,18 @@ export default function AdminProducts() {
               />
               <label
                 htmlFor="variant-images-upload"
-                className="inline-flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg cursor-pointer transition-colors"
+                className={`inline-flex items-center gap-2 px-4 py-2 bg-gray-100 rounded-lg transition-colors ${
+                  isUploadingVariantImages
+                    ? 'cursor-wait opacity-80 pointer-events-none'
+                    : 'hover:bg-gray-200 cursor-pointer'
+                }`}
               >
-                <Upload size={18} />
-                {isUploadingVariantImages ? 'Upload en cours...' : 'Uploader des images'}
+                {isUploadingVariantImages ? (
+                  <Loader2 className="animate-spin shrink-0" size={18} aria-hidden />
+                ) : (
+                  <Upload size={18} aria-hidden />
+                )}
+                {isUploadingVariantImages ? 'Traitement des images…' : 'Uploader des images'}
               </label>
             </div>
 

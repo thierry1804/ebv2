@@ -69,6 +69,36 @@ export default function ProductDetail() {
     }
   }, [product?.id, product?.name, product?.salePrice, product?.price]);
 
+  // Prix / plage / stock : hooks toujours appelés (pas après un return) pour éviter l'erreur React #310
+  const hasVariants = Boolean(product && product.hasVariants && variants.length > 0);
+
+  const displayPrice = useMemo(() => {
+    if (!product) return 0;
+    if (hasVariants && selectedVariant) {
+      return selectedVariant.price ?? product.price;
+    }
+    return product.salePrice || product.price;
+  }, [product, hasVariants, selectedVariant]);
+
+  const priceRange = useMemo(() => {
+    if (!product) return { min: 0, max: 0 };
+    if (hasVariants) {
+      return getPriceRange(product.price);
+    }
+    return { min: product.price, max: product.price };
+  }, [product, hasVariants, getPriceRange]);
+
+  const currentStock = useMemo(() => {
+    if (!product) return 0;
+    if (hasVariants) {
+      if (selectedVariant) {
+        return selectedVariant.stock;
+      }
+      return getTotalStock();
+    }
+    return product.stock;
+  }, [product, hasVariants, selectedVariant, getTotalStock]);
+
   if (!product) {
     return (
       <div className="container mx-auto px-4 py-16 text-center">
@@ -79,36 +109,6 @@ export default function ProductDetail() {
       </div>
     );
   }
-
-  // Calcul du prix et du stock en fonction des variantes
-  const hasVariants = product.hasVariants && variants.length > 0;
-  
-  // Prix affiché (variant > sale > base)
-  const displayPrice = useMemo(() => {
-    if (hasVariants && selectedVariant) {
-      return selectedVariant.price ?? product.price;
-    }
-    return product.salePrice || product.price;
-  }, [hasVariants, selectedVariant, product.price, product.salePrice]);
-  
-  // Plage de prix pour les variantes
-  const priceRange = useMemo(() => {
-    if (hasVariants) {
-      return getPriceRange(product.price);
-    }
-    return { min: product.price, max: product.price };
-  }, [hasVariants, getPriceRange, product.price]);
-  
-  // Stock disponible
-  const currentStock = useMemo(() => {
-    if (hasVariants) {
-      if (selectedVariant) {
-        return selectedVariant.stock;
-      }
-      return getTotalStock();
-    }
-    return product.stock;
-  }, [hasVariants, selectedVariant, getTotalStock, product.stock]);
   
   const hasSale = product.isOnSale && product.salePrice;
   const inWishlist = isInWishlist(product.id);

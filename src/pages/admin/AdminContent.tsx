@@ -6,8 +6,12 @@ import { Button } from '../../components/ui/Button';
 import toast from 'react-hot-toast';
 import { Modal } from '../../components/ui/Modal';
 import { useAdminAuth } from '../../context/AdminAuthContext';
+import { useConfirm } from '../../components/ui/ConfirmDialog';
+import { formatAppError } from '../../utils/errors';
+import { PageLoading } from '../../components/ui/PageLoading';
 
 export default function AdminContent() {
+  const confirm = useConfirm();
   const { adminUser } = useAdminAuth();
   const [contents, setContents] = useState<SiteContent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -100,28 +104,35 @@ export default function AdminContent() {
 
       setIsModalOpen(false);
       loadContents();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Erreur lors de la sauvegarde:', error);
-      toast.error(error.message || 'Erreur lors de la sauvegarde');
+      toast.error(formatAppError(error, 'Erreur lors de la sauvegarde'));
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Êtes-vous sûr de vouloir supprimer ce contenu ?')) return;
+    const ok = await confirm({
+      title: 'Supprimer le contenu',
+      message: 'Ce bloc de contenu sera supprimé définitivement.',
+      confirmLabel: 'Supprimer',
+      cancelLabel: 'Annuler',
+      variant: 'danger',
+    });
+    if (!ok) return;
 
     try {
       const { error } = await supabase.from('site_content').delete().eq('id', id);
       if (error) throw error;
       toast.success('Contenu supprimé avec succès');
       loadContents();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Erreur lors de la suppression:', error);
-      toast.error('Erreur lors de la suppression');
+      toast.error(formatAppError(error, 'Erreur lors de la suppression'));
     }
   };
 
   if (isLoading) {
-    return <div className="text-center py-8">Chargement...</div>;
+    return <PageLoading />;
   }
 
   return (

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Users, FileText, ShoppingBag, TrendingUp, AlertCircle } from 'lucide-react';
 import { useAdminAuth } from '../../context/AdminAuthContext';
+import { PageLoading } from '../../components/ui/PageLoading';
 
 export default function AdminDashboard() {
   const { adminUser } = useAdminAuth();
@@ -116,11 +117,7 @@ export default function AdminDashboard() {
   ];
 
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-gray-500">Chargement...</div>
-      </div>
-    );
+    return <PageLoading />;
   }
 
   return (

@@ -7,6 +7,9 @@ import { Offcanvas } from '../../components/ui/Offcanvas';
 import toast from 'react-hot-toast';
 import { convertToWebP } from '../../utils/imageUtils';
 import { useAdminAuth } from '../../context/AdminAuthContext';
+import { useConfirm } from '../../components/ui/ConfirmDialog';
+import { formatAppError } from '../../utils/errors';
+import { PageLoading } from '../../components/ui/PageLoading';
 
 interface DatabaseCategory {
   id: string;
@@ -21,6 +24,7 @@ interface DatabaseCategory {
 }
 
 export default function AdminCategories() {
+  const confirm = useConfirm();
   const { adminUser } = useAdminAuth();
   const [categories, setCategories] = useState<Category[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -65,9 +69,9 @@ export default function AdminCategories() {
         })) as any;
         setCategories(adaptedCategories);
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Erreur lors du chargement des catégories:', error);
-      toast.error('Erreur lors du chargement des catégories');
+      toast.error(formatAppError(error, 'Erreur lors du chargement des catégories'));
     } finally {
       setIsLoading(false);
     }
@@ -167,9 +171,9 @@ export default function AdminCategories() {
       setFormData({ ...formData, image: publicUrl });
       setImagePreview(publicUrl);
       toast.success('Image uploadée avec succès');
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Erreur lors de l\'upload:', error);
-      toast.error(error.message || 'Erreur lors de l\'upload de l\'image');
+      toast.error(formatAppError(error, 'Erreur lors de l\'upload de l\'image'));
     } finally {
       setIsUploading(false);
     }
@@ -274,14 +278,21 @@ export default function AdminCategories() {
 
       setIsOffcanvasOpen(false);
       loadCategories();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Erreur lors de la sauvegarde:', error);
-      toast.error(error.message || 'Erreur lors de la sauvegarde');
+      toast.error(formatAppError(error, 'Erreur lors de la sauvegarde'));
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Êtes-vous sûr de vouloir supprimer cette catégorie ?')) return;
+    const ok = await confirm({
+      title: 'Supprimer la catégorie',
+      message: 'Cette catégorie sera supprimée définitivement.',
+      confirmLabel: 'Supprimer',
+      cancelLabel: 'Annuler',
+      variant: 'danger',
+    });
+    if (!ok) return;
 
     try {
       // Récupérer la catégorie pour obtenir l'image
@@ -305,9 +316,9 @@ export default function AdminCategories() {
       if (error) throw error;
       toast.success('Catégorie supprimée avec succès');
       loadCategories();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Erreur lors de la suppression:', error);
-      toast.error('Erreur lors de la suppression');
+      toast.error(formatAppError(error, 'Erreur lors de la suppression'));
     }
   };
 
@@ -329,9 +340,9 @@ export default function AdminCategories() {
       if (error) throw error;
       toast.success(`Catégorie ${dbCategory.is_active ? 'désactivée' : 'activée'}`);
       loadCategories();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Erreur:', error);
-      toast.error('Erreur lors de la mise à jour');
+      toast.error(formatAppError(error, 'Erreur lors de la mise à jour'));
     }
   };
 
@@ -361,9 +372,9 @@ export default function AdminCategories() {
       if (error2) throw error2;
 
       loadCategories();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Erreur lors du déplacement:', error);
-      toast.error('Erreur lors du déplacement');
+      toast.error(formatAppError(error, 'Erreur lors du déplacement'));
     }
   };
 
@@ -385,7 +396,7 @@ export default function AdminCategories() {
   }, [categories]);
 
   if (isLoading) {
-    return <div className="text-center py-8">Chargement...</div>;
+    return <PageLoading />;
   }
 
   return (

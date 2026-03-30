@@ -3,6 +3,9 @@ import { supabase } from '../../lib/supabase';
 import { Search, Trash2, Mail, Phone } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAdminAuth } from '../../context/AdminAuthContext';
+import { useConfirm } from '../../components/ui/ConfirmDialog';
+import { formatAppError } from '../../utils/errors';
+import { PageLoading } from '../../components/ui/PageLoading';
 
 interface User {
   id: string;
@@ -15,6 +18,7 @@ interface User {
 }
 
 export default function AdminUsers() {
+  const confirm = useConfirm();
   const { isAuthenticated } = useAdminAuth();
   const [users, setUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -147,10 +151,11 @@ export default function AdminUsers() {
       if (mappedUsers.length === 0) {
         setError('Aucun utilisateur trouvé dans la table user_profiles. Les utilisateurs sont créés automatiquement lors de l\'inscription.');
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Erreur lors du chargement des utilisateurs:', error);
-      setError(`Erreur: ${error.message || 'Erreur inconnue'}`);
-      toast.error('Erreur lors du chargement des utilisateurs');
+      const msg = formatAppError(error, 'Erreur inconnue');
+      setError(`Erreur: ${msg}`);
+      toast.error(formatAppError(error, 'Erreur lors du chargement des utilisateurs'));
       setUsers([]);
     } finally {
       setIsLoading(false);
@@ -158,16 +163,23 @@ export default function AdminUsers() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Êtes-vous sûr de vouloir supprimer cet utilisateur ?')) return;
+    const ok = await confirm({
+      title: 'Supprimer l’utilisateur',
+      message: 'Le profil sera supprimé de la base. Cette action est définitive.',
+      confirmLabel: 'Supprimer',
+      cancelLabel: 'Annuler',
+      variant: 'danger',
+    });
+    if (!ok) return;
 
     try {
       const { error } = await supabase.from('user_profiles').delete().eq('id', id);
       if (error) throw error;
       toast.success('Utilisateur supprimé avec succès');
       loadUsers();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Erreur lors de la suppression:', error);
-      toast.error('Erreur lors de la suppression');
+      toast.error(formatAppError(error, 'Erreur lors de la suppression'));
     }
   };
 
@@ -179,7 +191,7 @@ export default function AdminUsers() {
   );
 
   if (isLoading) {
-    return <div className="text-center py-8">Chargement...</div>;
+    return <PageLoading />;
   }
 
   return (

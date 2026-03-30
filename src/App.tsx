@@ -8,6 +8,8 @@ import { Layout } from './components/layout/Layout';
 import { AdminLayout } from './components/admin/AdminLayout';
 import { ProtectedRoute } from './components/admin/ProtectedRoute';
 import { GoogleAnalytics } from './components/analytics/GoogleAnalytics';
+import { ConfirmProvider } from './components/ui/ConfirmDialog';
+import { PageLoading } from './components/ui/PageLoading';
 
 // Lazy load des pages publiques
 const Home = lazy(() => import('./pages/Home'));
@@ -38,19 +40,13 @@ const AdminCategories = lazy(() => import('./pages/admin/AdminCategories'));
 const AdminPromoCodes = lazy(() => import('./pages/admin/AdminPromoCodes'));
 const AdminOrders = lazy(() => import('./pages/admin/AdminOrders'));
 
-// Composant de chargement
-const LoadingFallback = () => (
-  <div className="flex items-center justify-center min-h-screen">
-    <div className="text-center">
-      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-secondary mx-auto mb-4"></div>
-      <p className="text-text-dark/80">Chargement...</p>
-    </div>
-  </div>
-);
+// Composant de chargement (pour les pages lazy-load)
+const LoadingFallback = () => <PageLoading />;
 
 function App() {
   return (
     <BrowserRouter>
+      <ConfirmProvider>
       <GoogleAnalytics />
       <AuthProvider>
         <CartProvider>
@@ -98,15 +94,15 @@ function App() {
                         <AdminLayout>
                           <Suspense fallback={<LoadingFallback />}>
                             <Routes>
-                              <Route path="/" element={<AdminDashboard />} />
-                              <Route path="/articles" element={<AdminArticles />} />
-                              <Route path="/utilisateurs" element={<AdminUsers />} />
-                              <Route path="/produits" element={<AdminProducts />} />
-                              <Route path="/contenu" element={<AdminContent />} />
-                              <Route path="/landing-page" element={<AdminLandingPage />} />
-                              <Route path="/categories" element={<AdminCategories />} />
-                              <Route path="/codes-promo" element={<AdminPromoCodes />} />
-                              <Route path="/commandes" element={<AdminOrders />} />
+                              <Route index element={<AdminDashboard />} />
+                              <Route path="articles" element={<AdminArticles />} />
+                              <Route path="utilisateurs" element={<AdminUsers />} />
+                              <Route path="produits" element={<AdminProducts />} />
+                              <Route path="contenu" element={<AdminContent />} />
+                              <Route path="landing-page" element={<AdminLandingPage />} />
+                              <Route path="categories" element={<AdminCategories />} />
+                              <Route path="codes-promo" element={<AdminPromoCodes />} />
+                              <Route path="commandes" element={<AdminOrders />} />
                             </Routes>
                           </Suspense>
                         </AdminLayout>
@@ -119,6 +115,7 @@ function App() {
           </WishlistProvider>
         </CartProvider>
       </AuthProvider>
+      </ConfirmProvider>
     </BrowserRouter>
   );
 }

@@ -6,11 +6,14 @@ import { formatPrice } from '../../utils/formatters';
 import { Modal } from '../../components/ui/Modal';
 import { Button } from '../../components/ui/Button';
 import { usePromoCodeRefunds } from '../../hooks/usePromoCodeRefunds';
-import { usePromoCodes } from '../../hooks/usePromoCodes';
 import toast from 'react-hot-toast';
 import { normalizeImageApiUrl } from '../../lib/imageApi';
+import { PageLoading } from '../../components/ui/PageLoading';
+import { useConfirm } from '../../components/ui/ConfirmDialog';
+import { formatAppError } from '../../utils/errors';
 
 export default function AdminOrders() {
+  const confirm = useConfirm();
   const [orders, setOrders] = useState<Order[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -20,7 +23,6 @@ export default function AdminOrders() {
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
   const [refunds, setRefunds] = useState<PromoCodeRefund[]>([]);
   const { createRefund, processRefund, getRefundsByOrder } = usePromoCodeRefunds();
-  const { getPromoCode } = usePromoCodes();
 
   useEffect(() => {
     loadOrders();
@@ -36,15 +38,15 @@ export default function AdminOrders() {
 
       if (error) {
         console.error('Erreur lors du chargement des commandes:', error);
-        toast.error('Erreur lors du chargement des commandes');
+        toast.error(formatAppError(error, 'Erreur lors du chargement des commandes'));
         setOrders([]);
       } else {
         const adaptedOrders = (data || []).map((dbOrder: DatabaseOrder) => adaptDatabaseOrderToOrder(dbOrder));
         setOrders(adaptedOrders);
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Erreur lors du chargement des commandes:', error);
-      toast.error('Erreur lors du chargement des commandes');
+      toast.error(formatAppError(error, 'Erreur lors du chargement des commandes'));
     } finally {
       setIsLoading(false);
     }
@@ -82,9 +84,9 @@ export default function AdminOrders() {
       if (selectedOrder?.id === orderId) {
         setSelectedOrder({ ...selectedOrder, status: newStatus });
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Erreur lors de la mise à jour du statut:', error);
-      toast.error('Erreur lors de la mise à jour du statut');
+      toast.error(formatAppError(error, 'Erreur lors de la mise à jour du statut'));
     }
   };
 
@@ -191,11 +193,7 @@ export default function AdminOrders() {
   });
 
   if (isLoading) {
-    return (
-      <div className="text-center py-8">
-        <div className="text-gray-500">Chargement des commandes...</div>
-      </div>
-    );
+    return <PageLoading />;
   }
 
   return (
@@ -382,10 +380,16 @@ export default function AdminOrders() {
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => {
-                          if (confirm('Êtes-vous sûr de vouloir annuler cette commande ?')) {
-                            updateOrderStatus(order.id, 'cancelled');
-                          }
+                        onClick={async () => {
+                          const ok = await confirm({
+                            title: 'Annuler la commande',
+                            message: 'Le statut de la commande passera à « annulée ».',
+                            confirmLabel: 'Annuler la commande',
+                            cancelLabel: 'Retour',
+                            variant: 'danger',
+                          });
+                          if (!ok) return;
+                          updateOrderStatus(order.id, 'cancelled');
                         }}
                         className="text-red-600 hover:text-red-700"
                       >
@@ -662,10 +666,16 @@ export default function AdminOrders() {
               {selectedOrder.status !== 'cancelled' && selectedOrder.status !== 'delivered' && (
                 <Button
                   variant="outline"
-                  onClick={() => {
-                    if (confirm('Êtes-vous sûr de vouloir annuler cette commande ?')) {
-                      updateOrderStatus(selectedOrder.id, 'cancelled');
-                    }
+                  onClick={async () => {
+                    const ok = await confirm({
+                      title: 'Annuler la commande',
+                      message: 'Le statut de la commande passera à « annulée ».',
+                      confirmLabel: 'Annuler la commande',
+                      cancelLabel: 'Retour',
+                      variant: 'danger',
+                    });
+                    if (!ok) return;
+                    updateOrderStatus(selectedOrder.id, 'cancelled');
                   }}
                   className="text-red-600 hover:text-red-700"
                 >
