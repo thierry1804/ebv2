@@ -42,8 +42,24 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
 
     const initAuth = async () => {
       try {
-        // Récupérer la session existante une seule fois au montage
-        const { data: { session } } = await supabase.auth.getSession();
+        // Récupérer la session existante une seule fois au montage (avec garde-temps : certains navigateurs
+        // peuvent laisser getSession() sans réponse si stockage / extensions bloquent l'accès.)
+        const SESSION_INIT_MS = 4_000;
+        let didTimeout = false;
+        const { data: { session } } = await Promise.race([
+          supabase.auth.getSession(),
+          new Promise<{ data: { session: null } }>((_, reject) =>
+            setTimeout(() => { didTimeout = true; reject(new Error('getSession timeout')); }, SESSION_INIT_MS)
+          ),
+        ]).catch((err: unknown) => {
+          console.warn('[AdminAuth] getSession:', err);
+          return { data: { session: null } };
+        });
+
+        // Si timeout, nettoyer l'état auth potentiellement corrompu
+        if (didTimeout) {
+          try { await supabase.auth.signOut({ scope: 'local' }); } catch { /* ignore */ }
+        }
 
         if (isMounted) {
           // Vérifier que l'utilisateur est bien l'admin

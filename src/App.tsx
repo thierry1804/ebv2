@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Outlet } from 'react-router-dom';
 import { Suspense, lazy } from 'react';
 import { CartProvider } from './context/CartContext';
 import { WishlistProvider } from './context/WishlistContext';
@@ -83,33 +83,40 @@ function App() {
                   }
                 />
 
-                {/* Routes admin - AdminAuthProvider uniquement pour les routes admin */}
-                <Route path="/admin/login" element={<AdminAuthProvider><AdminLogin /></AdminAuthProvider>} />
-                <Route path="/admin/signup" element={<AdminAuthProvider><AdminSignup /></AdminAuthProvider>} /> {/* TEMPORAIRE - À SUPPRIMER */}
+                {/* Un seul AdminAuthProvider pour tout /admin : évite le remontage login → dashboard
+                    (sinon isLoading repart à true et getSession peut rester bloqué dans certains navigateurs). */}
                 <Route
-                  path="/admin/*"
+                  path="/admin"
                   element={
                     <AdminAuthProvider>
+                      <Outlet />
+                    </AdminAuthProvider>
+                  }
+                >
+                  <Route path="login" element={<AdminLogin />} />
+                  <Route path="signup" element={<AdminSignup />} /> {/* TEMPORAIRE - À SUPPRIMER */}
+                  <Route
+                    element={
                       <ProtectedRoute>
                         <AdminLayout>
                           <Suspense fallback={<LoadingFallback />}>
-                            <Routes>
-                              <Route index element={<AdminDashboard />} />
-                              <Route path="articles" element={<AdminArticles />} />
-                              <Route path="utilisateurs" element={<AdminUsers />} />
-                              <Route path="produits" element={<AdminProducts />} />
-                              <Route path="contenu" element={<AdminContent />} />
-                              <Route path="landing-page" element={<AdminLandingPage />} />
-                              <Route path="categories" element={<AdminCategories />} />
-                              <Route path="codes-promo" element={<AdminPromoCodes />} />
-                              <Route path="commandes" element={<AdminOrders />} />
-                            </Routes>
+                            <Outlet />
                           </Suspense>
                         </AdminLayout>
                       </ProtectedRoute>
-                    </AdminAuthProvider>
-                  }
-                />
+                    }
+                  >
+                    <Route index element={<AdminDashboard />} />
+                    <Route path="articles" element={<AdminArticles />} />
+                    <Route path="utilisateurs" element={<AdminUsers />} />
+                    <Route path="produits" element={<AdminProducts />} />
+                    <Route path="contenu" element={<AdminContent />} />
+                    <Route path="landing-page" element={<AdminLandingPage />} />
+                    <Route path="categories" element={<AdminCategories />} />
+                    <Route path="codes-promo" element={<AdminPromoCodes />} />
+                    <Route path="commandes" element={<AdminOrders />} />
+                  </Route>
+                </Route>
               </Routes>
             </Suspense>
           </WishlistProvider>

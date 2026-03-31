@@ -49,6 +49,9 @@ function isAbortError(e: unknown): boolean {
 
 const ADMIN_LOG = '[AdminProducts]';
 
+/** `true` : la zone « Ou ajouter une URL » reste dans le DOM mais masquée (`hidden`). Mettre à `false` pour l’afficher. */
+const HIDE_MANUAL_IMAGE_URL_FIELD = true;
+
 /** Contexte Supabase pour le débogage (sans clé API). */
 function getSupabaseEnvDebug(): { ok: boolean; host: string | null; hint: string } {
   const url = import.meta.env.VITE_SUPABASE_URL || '';
@@ -175,14 +178,12 @@ export default function AdminProducts() {
     variants, 
     options: variantOptions, 
     isLoading: isLoadingVariants,
-    loadVariants,
     saveOption,
     deleteOption,
     saveVariant,
     deleteVariant,
     generateAllVariants,
     getTotalStock,
-    getPriceRange
   } = useProductVariants(editingProduct?.id || null);
 
   const getProductFormErrors = (): ProductFormErrors => {
@@ -263,15 +264,6 @@ export default function AdminProducts() {
 
   // Palette de couleurs prédéfinies (importée depuis la config partagée)
   const predefinedColors = sharedPredefinedColors;
-
-  // Fonction pour calculer si une couleur est sombre
-  const isColorDark = (hex: string): boolean => {
-    const r = parseInt(hex.substr(1, 2), 16);
-    const g = parseInt(hex.substr(3, 2), 16);
-    const b = parseInt(hex.substr(5, 2), 16);
-    const brightness = (r * 299 + g * 587 + b * 114) / 1000;
-    return brightness < 128;
-  };
 
   useEffect(() => {
     // Charger les produits une seule fois au montage
@@ -356,8 +348,8 @@ export default function AdminProducts() {
             reviewCount: p.review_count || 0,
             isNew: p.is_new || false,
             isOnSale: p.is_on_sale || false,
-            salePrice: p.sale_price,
-            brand: p.brand,
+            salePrice: p.sale_price ?? undefined,
+            brand: p.brand ?? undefined,
             hasVariants: p.has_variants || false,
           };
         });
@@ -955,8 +947,8 @@ export default function AdminProducts() {
           reviewCount: 0,
           isNew: productData.is_new || false,
           isOnSale: productData.is_on_sale || false,
-          salePrice: productData.sale_price,
-          brand: productData.brand,
+          salePrice: productData.sale_price ?? undefined,
+          brand: productData.brand ?? undefined,
           hasVariants: productData.has_variants || false,
         };
         setEditingProduct(newProduct);
@@ -1750,11 +1742,15 @@ export default function AdminProducts() {
               </label>
             </div>
 
-            {/* URLs manuelles */}
-            <div className="mb-2">
+            {/* URLs manuelles — masquées visuellement si HIDE_MANUAL_IMAGE_URL_FIELD */}
+            <div
+              className={cn('mb-2', HIDE_MANUAL_IMAGE_URL_FIELD && 'hidden')}
+              aria-hidden={HIDE_MANUAL_IMAGE_URL_FIELD}
+            >
               <label className="block text-xs text-gray-600 mb-1">Ou ajouter une URL</label>
               <div className="flex flex-col sm:flex-row gap-2">
                 <input
+                  id="admin-product-manual-image-url"
                   type="text"
                   placeholder="https://images.unsplash.com/..."
                   className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-secondary"
@@ -1769,8 +1765,11 @@ export default function AdminProducts() {
                   }}
                 />
                 <Button
+                  type="button"
                   onClick={() => {
-                    const input = document.querySelector('input[placeholder*="https://images"]') as HTMLInputElement;
+                    const input = document.getElementById(
+                      'admin-product-manual-image-url'
+                    ) as HTMLInputElement | null;
                     if (input?.value.trim()) {
                       setFormData({ ...formData, images: [...formData.images, input.value.trim()] });
                       input.value = '';
@@ -1904,16 +1903,28 @@ export default function AdminProducts() {
               )}
             </div>
 
-            {formData.hasVariants && isVariantsSectionOpen && editingProduct && (
+            {formData.hasVariants && isVariantsSectionOpen && (
               <div className="bg-gray-50 rounded-lg p-4 space-y-4">
-                {/* Options de variantes */}
+                {!editingProduct && (
+                  <p className="text-sm text-amber-600 bg-amber-50 p-3 rounded-lg">
+                    Le produit sera enregistré automatiquement lorsque vous ajouterez une option.
+                  </p>
+                )}
                 <div>
                   <div className="flex items-center justify-between mb-3">
                     <h4 className="text-sm font-semibold text-gray-700">Options (ex: Taille, Couleur)</h4>
                     <Button
-                      onClick={() => {
+                      onClick={async () => {
+                        // Si le produit n'est pas encore enregistré, le sauvegarder d'abord
                         if (!editingProduct) {
-                          toast.error('Veuillez d\'abord enregistrer le produit avant d\'ajouter des options');
+                          await handleSave();
+                          // handleSave met à jour editingProduct via setEditingProduct
+                          // On ouvre la modal après un court délai pour laisser le state se mettre à jour
+                          setTimeout(() => {
+                            setEditingOption(null);
+                            setOptionFormData({ name: '', values: [{ value: '' }] });
+                            setIsOptionModalOpen(true);
+                          }, 300);
                           return;
                         }
                         setEditingOption(null);
@@ -1984,7 +1995,6 @@ export default function AdminProducts() {
                       ))}
                     </div>
                   )}
-                </div>
 
                 {/* Variantes */}
                 {variantOptions.length > 0 && (
@@ -2125,12 +2135,7 @@ export default function AdminProducts() {
                     )}
                   </div>
                 )}
-
-                {formData.hasVariants && !editingProduct && (
-                  <p className="text-sm text-amber-600 bg-amber-50 p-3 rounded-lg">
-                    ⚠️ Enregistrez d'abord le produit pour pouvoir ajouter des variantes.
-                  </p>
-                )}
+                </div>
               </div>
             )}
           </div>
@@ -2551,11 +2556,14 @@ export default function AdminProducts() {
               </label>
             </div>
 
-            {/* URLs manuelles */}
-            <div className="mb-2">
+            <div
+              className={cn('mb-2', HIDE_MANUAL_IMAGE_URL_FIELD && 'hidden')}
+              aria-hidden={HIDE_MANUAL_IMAGE_URL_FIELD}
+            >
               <label className="block text-xs text-gray-600 mb-1">Ou ajouter une URL</label>
               <div className="flex flex-col sm:flex-row gap-2">
                 <input
+                  id="admin-variant-manual-image-url"
                   type="text"
                   placeholder="https://images.unsplash.com/..."
                   className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-secondary"
@@ -2573,8 +2581,11 @@ export default function AdminProducts() {
                   }}
                 />
                 <Button
+                  type="button"
                   onClick={() => {
-                    const input = document.querySelector('input[placeholder*="https://images"]') as HTMLInputElement;
+                    const input = document.getElementById(
+                      'admin-variant-manual-image-url'
+                    ) as HTMLInputElement | null;
                     if (input?.value.trim()) {
                       setVariantFormData((prev) => ({
                         ...prev,
