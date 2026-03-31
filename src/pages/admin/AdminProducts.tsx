@@ -29,7 +29,60 @@ import {
   getVariantDisplayName 
 } from '../../types/variants';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
-import { formatAppError } from '../../utils/errors';
+import { formatAppError, extractErrorMessage } from '../../utils/errors';
+import { cn } from '../../utils/cn';
+
+type ProductFormErrors = Partial<
+  Record<'name' | 'category' | 'price' | 'stock' | 'salePrice' | 'general', string>
+>;
+
+function isAbortError(e: unknown): boolean {
+  return (
+    (e instanceof DOMException && e.name === 'AbortError') ||
+    (typeof e === 'object' &&
+      e !== null &&
+      'name' in e &&
+      (e as { name: string }).name === 'AbortError')
+  );
+}
+
+const ADMIN_LOG = '[AdminProducts]';
+
+/** Contexte Supabase pour le débogage (sans clé API). */
+function getSupabaseEnvDebug(): { ok: boolean; host: string | null; hint: string } {
+  const url = import.meta.env.VITE_SUPABASE_URL || '';
+  const key = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+  if (!url || !key) {
+    return {
+      ok: false,
+      host: null,
+      hint: 'Définir VITE_SUPABASE_URL et VITE_SUPABASE_ANON_KEY (build / .env)',
+    };
+  }
+  if (url.includes('placeholder')) {
+    return {
+      ok: false,
+      host: 'placeholder.supabase.co',
+      hint: 'Client en mode placeholder — les appels REST ne sont pas valides',
+    };
+  }
+  try {
+    return { ok: true, host: new URL(url).host, hint: '' };
+  } catch {
+    return { ok: false, host: null, hint: 'VITE_SUPABASE_URL n’est pas une URL valide' };
+  }
+}
+
+function logPostgrestLikeError(label: string, error: unknown) {
+  const e = error as { message?: string; code?: string; details?: string; hint?: string; name?: string };
+  console.error(`${ADMIN_LOG} ${label}`, {
+    name: e?.name,
+    message: e?.message,
+    code: e?.code,
+    details: e?.details,
+    hint: e?.hint,
+  });
+}
 
 export default function AdminProducts() {
   const confirm = useConfirm();
@@ -57,7 +110,9 @@ export default function AdminProducts() {
   });
   const [isUploading, setIsUploading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [saveStep, setSaveStep] = useState<'idle' | 'database' | 'reload'>('idle');
+  const [fieldErrors, setFieldErrors] = useState<ProductFormErrors>({});
+  const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
   const [selectedColors, setSelectedColors] = useState<Array<{name: string, hex: string, custom: boolean}>>([]);
   const [selectedColorHex, setSelectedColorHex] = useState<string>('#1abc9c');
   const [customColorName, setCustomColorName] = useState('');
@@ -88,7 +143,29 @@ export default function AdminProducts() {
   });
   const [isUploadingVariantImages, setIsUploadingVariantImages] = useState(false);
   const variantFileInputRef = useRef<HTMLInputElement>(null);
-  
+  const saveAbortRef = useRef<AbortController | null>(null);
+  /** Garde synchrone : évite deux sauvegardes concurrentes (setState isSaving est asynchrone) */
+  const saveInProgressRef = useRef(false);
+  const nameFieldRef = useRef<HTMLInputElement>(null);
+  const categoryFieldRef = useRef<HTMLSelectElement>(null);
+  const priceFieldRef = useRef<HTMLInputElement>(null);
+  const stockFieldRef = useRef<HTMLInputElement>(null);
+  const salePriceFieldRef = useRef<HTMLInputElement>(null);
+
+  const closeProductOffcanvas = () => {
+    const saving = saveInProgressRef.current;
+    if (saving) {
+      console.warn(`${ADMIN_LOG} offcanvas · fermeture — annulation sauvegarde en cours`);
+    }
+    saveAbortRef.current?.abort();
+    saveAbortRef.current = null;
+    saveInProgressRef.current = false;
+    setIsOffcanvasOpen(false);
+    setIsSaving(false);
+    setSaveStep('idle');
+    setFieldErrors({});
+  };
+
   // Hook pour les variantes
   const { 
     variants, 
@@ -103,6 +180,82 @@ export default function AdminProducts() {
     getTotalStock,
     getPriceRange
   } = useProductVariants(editingProduct?.id || null);
+
+  const getProductFormErrors = (): ProductFormErrors => {
+    const errors: ProductFormErrors = {};
+    if (!formData.name.trim()) {
+      errors.name = 'Le nom du produit est obligatoire.';
+    }
+    if (!formData.category.trim()) {
+      errors.category =
+        categories.length === 0
+          ? 'Aucune catégorie disponible. Créez-en une dans la page Catégories.'
+          : 'Choisissez une catégorie.';
+    }
+    const priceNum = parseFloat(formData.price);
+    if (formData.price.trim() === '' || Number.isNaN(priceNum) || priceNum < 0) {
+      errors.price = 'Indiquez un prix valide (nombre positif ou 0).';
+    }
+    if (!formData.hasVariants) {
+      const stockRaw = formData.stock.trim();
+      if (stockRaw === '') {
+        errors.stock = 'Indiquez le stock (nombre entier, ex. 0 si vide en rayon).';
+      } else {
+        const stockNum = parseInt(stockRaw, 10);
+        if (Number.isNaN(stockNum) || stockNum < 0) {
+          errors.stock = 'Stock : entier positif ou 0.';
+        }
+      }
+    }
+    if (formData.isOnSale) {
+      const saleRaw = formData.salePrice.trim();
+      if (saleRaw === '') {
+        errors.salePrice = 'Indiquez le prix promotionnel.';
+      } else {
+        const saleNum = parseFloat(saleRaw);
+        if (Number.isNaN(saleNum) || saleNum < 0) {
+          errors.salePrice = 'Prix promotionnel invalide.';
+        } else if (!Number.isNaN(priceNum) && saleNum >= priceNum) {
+          errors.salePrice = 'Le prix promotionnel doit être strictement inférieur au prix normal.';
+        }
+      }
+    }
+    return errors;
+  };
+
+  const scrollToFirstFieldError = (errs: ProductFormErrors) => {
+    const order = ['name', 'category', 'price', 'stock', 'salePrice', 'general'] as const;
+    for (const key of order) {
+      if (!errs[key]) continue;
+      const ref =
+        key === 'name'
+          ? nameFieldRef
+          : key === 'category'
+            ? categoryFieldRef
+            : key === 'price'
+              ? priceFieldRef
+              : key === 'stock'
+                ? stockFieldRef
+                : key === 'salePrice'
+                  ? salePriceFieldRef
+                  : null;
+      const el = ref?.current;
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        window.requestAnimationFrame(() => el.focus());
+      }
+      break;
+    }
+  };
+
+  const clearFieldError = (key: keyof ProductFormErrors) => {
+    setFieldErrors((prev) => {
+      if (!prev[key]) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+  };
 
   // Palette de couleurs prédéfinies (importée depuis la config partagée)
   const predefinedColors = sharedPredefinedColors;
@@ -122,6 +275,13 @@ export default function AdminProducts() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadProducts = async () => {
+    const env = getSupabaseEnvDebug();
+    console.log(`${ADMIN_LOG} loadProducts · GET /rest/v1/products`, {
+      supabaseOk: env.ok,
+      host: env.host,
+      ...(env.hint ? { attention: env.hint } : {}),
+    });
+
     try {
       const { data, error } = await supabase
         .from('products')
@@ -129,7 +289,8 @@ export default function AdminProducts() {
         .order('created_at', { ascending: false });
 
       if (error) {
-        console.warn('Table products non trouvée:', error);
+        logPostgrestLikeError('loadProducts · erreur Supabase', error);
+        console.warn(`${ADMIN_LOG} loadProducts · liste vide (erreur ci-dessus)`);
         setProducts([]);
       } else {
         // Adapter les données de Supabase au format Product
@@ -149,18 +310,27 @@ export default function AdminProducts() {
             }
             
             if (Array.isArray(parsedColors) && parsedColors.length > 0) {
-              // Si le premier élément est un objet avec name et hex, c'est le nouveau format
-              const firstColor = parsedColors[0];
-              if (firstColor && typeof firstColor === 'object' && firstColor !== null && 
-                  'name' in firstColor && 'hex' in firstColor) {
-                // Nouveau format : ColorWithHex[]
-                colors = parsedColors.map((c: any) => ({
+              // Tenter de parser chaque élément (TEXT[] contient des JSON strings)
+              const decoded = parsedColors.map((c: any) => {
+                if (c && typeof c === 'object' && 'name' in c && 'hex' in c) return c;
+                if (typeof c === 'string') {
+                  try {
+                    const obj = JSON.parse(c);
+                    if (obj && typeof obj === 'object' && obj.name) return obj;
+                  } catch (_) { /* pas du JSON */ }
+                  return c; // ancien format : simple nom de couleur
+                }
+                return c;
+              });
+              const first = decoded[0];
+              if (first && typeof first === 'object' && first !== null &&
+                  'name' in first && 'hex' in first) {
+                colors = decoded.map((c: any) => ({
                   name: c.name || 'Couleur inconnue',
                   hex: (c.hex && /^#[0-9A-F]{6}$/i.test(c.hex)) ? c.hex.toUpperCase() : '#CCCCCC'
                 }));
-              } else if (typeof firstColor === 'string') {
-                // Ancien format : tableau de strings, on le garde tel quel pour compatibilité
-                colors = parsedColors;
+              } else if (typeof first === 'string') {
+                colors = decoded;
               }
             }
           }
@@ -188,9 +358,10 @@ export default function AdminProducts() {
           };
         });
         setProducts(adaptedProducts);
+        console.log(`${ADMIN_LOG} loadProducts · OK`, { count: adaptedProducts.length });
       }
     } catch (error: any) {
-      console.error('Erreur lors du chargement des produits:', error);
+      logPostgrestLikeError('loadProducts · exception', error);
       toast.error('Erreur lors du chargement des produits');
     } finally {
       setIsLoading(false);
@@ -198,6 +369,7 @@ export default function AdminProducts() {
   };
 
   const handleCreate = () => {
+    setFieldErrors({});
     setEditingProduct(null);
     setFormData({
       name: '',
@@ -224,6 +396,7 @@ export default function AdminProducts() {
   };
 
   const handleEdit = (product: Product) => {
+    setFieldErrors({});
     setEditingProduct(product);
     const colors = Array.isArray(product.colors) ? product.colors : [];
     
@@ -350,6 +523,7 @@ export default function AdminProducts() {
     setFormData({ ...formData, colors: updatedColors.map(c => c.name).join(', ') });
   };
 
+  /** Upload fichier : API images si configurée, sinon repli Supabase Storage (bucket `products`), comme les catégories. */
   const handleImageUpload = async (file: File): Promise<string | null> => {
     if (!file.type.startsWith('image/')) {
       toast.error('Veuillez sélectionner un fichier image');
@@ -367,23 +541,39 @@ export default function AdminProducts() {
         return null;
       }
 
-      if (!isImageApiConfigured()) {
-        toast.error(
-          'API images non configurée. Définissez VITE_IMAGE_API_BASE_URL et VITE_IMAGE_API_KEY dans .env'
-        );
+      const webpFile = await convertToWebP(file);
+
+      if (isImageApiConfigured()) {
+        try {
+          const apiUrl = await uploadImageToImageApi(webpFile);
+          if (apiUrl) return apiUrl;
+        } catch (apiErr) {
+          console.warn('Upload API images échoué, repli Supabase Storage:', apiErr);
+        }
+      }
+
+      const fileExt = webpFile.name.split('.').pop() || 'webp';
+      const path = `products/${Date.now()}-${Math.random().toString(36).slice(2, 9)}.${fileExt}`;
+      const { error: storageError } = await supabase.storage
+        .from('products')
+        .upload(path, webpFile, { cacheControl: '3600', upsert: false });
+
+      if (storageError) {
+        if (storageError.message.includes('Bucket not found')) {
+          toast.error(
+            'Bucket Storage « products » introuvable. Créez-le dans Supabase, ou configurez VITE_IMAGE_API_BASE_URL et VITE_IMAGE_API_KEY.'
+          );
+        } else {
+          throw storageError;
+        }
         return null;
       }
 
-      const webpFile = await convertToWebP(file);
-      const publicUrl = await uploadImageToImageApi(webpFile);
-      if (!publicUrl) {
-        toast.error('Réponse API images invalide (urls attendu)');
-        return null;
-      }
-      return publicUrl;
-    } catch (error: any) {
+      const { data: pub } = supabase.storage.from('products').getPublicUrl(path);
+      return pub.publicUrl;
+    } catch (error: unknown) {
       console.error('Erreur lors de l\'upload:', error);
-      toast.error(error.message || 'Erreur lors de l\'upload de l\'image');
+      toast.error(formatAppError(error, 'Erreur lors de l\'upload de l\'image'));
       return null;
     }
   };
@@ -414,6 +604,10 @@ export default function AdminProducts() {
           images: [...prev.images, ...uploadedUrls],
         }));
         toast.success(`${uploadedUrls.length} image(s) uploadée(s) avec succès`);
+      } else if (files.length > 0) {
+        toast.error(
+          "Aucune image n'a été ajoutée. Vérifiez les messages d'erreur ci-dessus ou la configuration."
+        );
       }
 
       // Réinitialiser l'input pour permettre de sélectionner les mêmes fichiers à nouveau
@@ -497,34 +691,74 @@ export default function AdminProducts() {
   };
 
   const handleSave = async () => {
-    if (!formData.name.trim()) {
-      toast.error('Le nom du produit est obligatoire');
-      return;
-    }
-    if (!formData.category) {
-      toast.error('La catégorie est obligatoire');
-      return;
-    }
-    const priceNum = parseFloat(formData.price);
-    if (formData.price === '' || Number.isNaN(priceNum) || priceNum < 0) {
-      toast.error('Indiquez un prix valide (nombre positif)');
+    setFieldErrors({});
+    const validationErrors = getProductFormErrors();
+    if (Object.keys(validationErrors).length > 0) {
+      console.warn(`${ADMIN_LOG} save · arrêt — validation formulaire`, validationErrors);
+      setFieldErrors(validationErrors);
+      scrollToFirstFieldError(validationErrors);
+      toast.error('Corrigez les champs indiqués ci-dessous.', { duration: 4000 });
       return;
     }
 
-    setIsSaving(true);
+    const priceNum = parseFloat(formData.price);
+    const stockInt = formData.hasVariants
+      ? 0
+      : parseInt(formData.stock.trim(), 10);
+
+    if (saveInProgressRef.current) {
+      console.warn(`${ADMIN_LOG} save · ignoré — une sauvegarde est déjà en cours (garde synchrone)`);
+      return;
+    }
+    saveInProgressRef.current = true;
+
+    const env = getSupabaseEnvDebug();
+    const mode = editingProduct ? 'update' : 'insert';
+    console.log(`${ADMIN_LOG} save · démarrage`, {
+      mode,
+      productId: editingProduct?.id ?? null,
+      adminSession: Boolean(adminUser),
+      supabaseOk: env.ok,
+      host: env.host,
+      ...(env.hint ? { attention: env.hint } : {}),
+    });
+    if (!env.ok) {
+      console.error(
+        `${ADMIN_LOG} save · impossible d’enregistrer tant que Supabase n’est pas configuré correctement`
+      );
+    }
+    if (!adminUser) {
+      console.warn(
+        `${ADMIN_LOG} save · aucune session admin détectée — les politiques RLS peuvent refuser INSERT/UPDATE`
+      );
+    }
+
+    /** Évite une attente infinie si la requête réseau vers Supabase ne se termine pas */
+    const SAVE_TIMEOUT_MS = 90_000;
+    let saveTimeoutId: number | undefined;
+    const controller = new AbortController();
+
     try {
+      saveAbortRef.current = controller;
+      setIsSaving(true);
+      setSaveStep('database');
+      saveTimeoutId = window.setTimeout(() => {
+        console.warn(`${ADMIN_LOG} save · timeout ${SAVE_TIMEOUT_MS / 1000}s — AbortSignal déclenché`);
+        controller.abort();
+      }, SAVE_TIMEOUT_MS);
       const sizesArray = formData.sizes.split(',').map((s) => s.trim()).filter(Boolean);
-      // Stocker les couleurs avec leur code hexadécimal
-      const colorsArray = selectedColors.length > 0 
-        ? selectedColors.map(c => ({ name: c.name, hex: c.hex }))
+      // Stocker les couleurs avec leur code hexadécimal (sérialisées en JSON strings pour TEXT[])
+      const colorsArray = selectedColors.length > 0
+        ? selectedColors.map(c => JSON.stringify({ name: c.name, hex: c.hex }))
         : formData.colors.split(',').map((c) => {
             const colorName = c.trim();
+            if (!colorName) return '';
             const predefined = predefinedColors.find(pc => pc.name === colorName);
-            return {
+            return JSON.stringify({
               name: colorName,
               hex: predefined ? predefined.hex : '#CCCCCC'
-            };
-          }).filter(c => c.name);
+            });
+          }).filter(Boolean);
       const imagesArray = formData.images;
 
       const productData = {
@@ -533,78 +767,151 @@ export default function AdminProducts() {
         price: priceNum,
         description: formData.description,
         composition: formData.composition,
-        stock: formData.hasVariants ? 0 : parseInt(formData.stock), // Stock géré par variantes si activé
+        stock: stockInt,
         sizes: sizesArray,
-        colors: colorsArray, // Maintenant stocké avec hex
+        colors: colorsArray,
         images: imagesArray,
         is_new: formData.isNew,
         is_on_sale: formData.isOnSale,
-        sale_price: formData.salePrice ? parseFloat(formData.salePrice) : null,
+        sale_price:
+          formData.isOnSale && formData.salePrice.trim() !== ''
+            ? parseFloat(formData.salePrice)
+            : null,
         brand: formData.brand || null,
         has_variants: formData.hasVariants,
       };
 
-      if (editingProduct) {
-        const { error } = await supabase
-          .from('products')
-          .update(productData)
-          .eq('id', editingProduct.id);
+      console.log(`${ADMIN_LOG} save · payload (résumé)`, {
+        name: productData.name,
+        category: productData.category,
+        price: productData.price,
+        stock: productData.stock,
+        imagesCount: Array.isArray(productData.images) ? productData.images.length : 0,
+        colorsCount: Array.isArray(productData.colors) ? productData.colors.length : 0,
+        hasVariants: productData.has_variants,
+      });
 
-        if (error) throw error;
+      // Utiliser fetch() directement au lieu du client Supabase pour éviter
+      // les blocages de connexion PostgREST sur les opérations consécutives
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      const { data: { session: currentSession } } = await supabase.auth.getSession();
+      const accessToken = currentSession?.access_token || supabaseAnonKey;
+
+      if (editingProduct) {
+        console.log(`${ADMIN_LOG} save · requête PATCH products`, { id: editingProduct.id });
+        const patchRes = await fetch(
+          `${supabaseUrl}/rest/v1/products?id=eq.${editingProduct.id}`,
+          {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+              'apikey': supabaseAnonKey,
+              'Authorization': `Bearer ${accessToken}`,
+              'Prefer': 'return=minimal',
+            },
+            body: JSON.stringify(productData),
+            signal: controller.signal,
+          },
+        );
+        if (!patchRes.ok) {
+          const errBody = await patchRes.json().catch(() => ({}));
+          throw new Error(errBody.message || `HTTP ${patchRes.status}`);
+        }
+        console.log(`${ADMIN_LOG} save · PATCH OK`, { id: editingProduct.id });
         toast.success('Produit modifié avec succès');
       } else {
-        const { data, error } = await supabase
-          .from('products')
-          .insert(productData)
-          .select()
-          .single();
-
-        if (error) throw error;
-        
-        // Mettre à jour editingProduct avec le nouveau produit créé
-        if (data) {
-          const newProduct: Product = {
-            id: data.id,
-            name: data.name,
-            category: data.category,
-            price: data.price,
-            description: data.description || '',
-            composition: data.composition || '',
-            stock: data.stock || 0,
-            sizes: Array.isArray(data.sizes) ? data.sizes : [],
-            colors: data.colors || [],
-            images: Array.isArray(data.images) ? data.images : [],
-            rating: data.rating || 0,
-            reviewCount: data.review_count || 0,
-            isNew: data.is_new || false,
-            isOnSale: data.is_on_sale || false,
-            salePrice: data.sale_price,
-            brand: data.brand,
-            hasVariants: data.has_variants || false,
-          };
-          setEditingProduct(newProduct);
+        const clientId = crypto.randomUUID();
+        console.log(`${ADMIN_LOG} save · requête POST products (id client: ${clientId})`);
+        const postRes = await fetch(`${supabaseUrl}/rest/v1/products`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': supabaseAnonKey,
+            'Authorization': `Bearer ${accessToken}`,
+            'Prefer': 'return=minimal',
+          },
+          body: JSON.stringify({ id: clientId, ...productData }),
+          signal: controller.signal,
+        });
+        if (!postRes.ok) {
+          const errBody = await postRes.json().catch(() => ({}));
+          throw new Error(errBody.message || `HTTP ${postRes.status}`);
         }
-        
+
+        console.log(`${ADMIN_LOG} save · POST OK`, { id: clientId, name: productData.name });
+
+        const newProduct: Product = {
+          id: clientId,
+          name: productData.name,
+          category: productData.category,
+          price: productData.price,
+          description: productData.description || '',
+          composition: productData.composition || '',
+          stock: productData.stock || 0,
+          sizes: Array.isArray(productData.sizes) ? productData.sizes : [],
+          colors: productData.colors || [],
+          images: Array.isArray(productData.images) ? productData.images : [],
+          rating: 0,
+          reviewCount: 0,
+          isNew: productData.is_new || false,
+          isOnSale: productData.is_on_sale || false,
+          salePrice: productData.sale_price,
+          brand: productData.brand,
+          hasVariants: productData.has_variants || false,
+        };
+        setEditingProduct(newProduct);
+
         toast.success('Produit créé avec succès');
       }
 
+      setSaveStep('reload');
+      console.log(`${ADMIN_LOG} save · rechargement liste (loadProducts)`);
+      await loadProducts();
+      console.log(`${ADMIN_LOG} save · loadProducts terminé`);
+
       // Ne pas fermer le panneau si on vient de créer le produit et qu'il a des variantes
       if (!editingProduct && formData.hasVariants) {
+        console.log(`${ADMIN_LOG} save · panneau laissé ouvert (variantes à configurer)`);
         // Garder le panneau ouvert pour permettre d'ajouter des variantes
       } else {
         setIsOffcanvasOpen(false);
+        setFieldErrors({});
+        console.log(`${ADMIN_LOG} save · panneau fermé`);
       }
-      loadProducts();
+      console.log(`${ADMIN_LOG} save · succès complet`);
     } catch (error: unknown) {
-      console.error('Erreur lors de la sauvegarde:', error);
+      const errMsg = extractErrorMessage(error) ?? '';
+      if (
+        isAbortError(error) ||
+        errMsg.includes('AbortError') ||
+        errMsg.includes('user aborted')
+      ) {
+        console.warn(`${ADMIN_LOG} save · annulé`, { message: errMsg || String(error) });
+        toast.error(
+          'Enregistrement interrompu ou délai dépassé (90 s). Vérifiez la connexion et réessayez.',
+          { duration: 6000 }
+        );
+        return;
+      }
+      logPostgrestLikeError('save · erreur', error);
       toast.error(formatAppError(error, 'Erreur lors de la sauvegarde'), { duration: 6000 });
     } finally {
+      if (saveTimeoutId) clearTimeout(saveTimeoutId);
+      saveInProgressRef.current = false;
       setIsSaving(false);
+      setSaveStep('idle');
+      // Ne nettoyer la ref que si c'est toujours NOTRE controller
+      // (un second appel concurrent a pu le remplacer)
+      if (saveAbortRef.current === controller) {
+        saveAbortRef.current = null;
+      }
+      console.log(`${ADMIN_LOG} save · finally (état UI réinitialisé)`);
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (deletingId) return;
+    if (deletingIds.has(id)) return;
 
     const ok = await confirm({
       title: 'Supprimer le produit',
@@ -616,7 +923,7 @@ export default function AdminProducts() {
     });
     if (!ok) return;
 
-    setDeletingId(id);
+    setDeletingIds(prev => new Set(prev).add(id));
     const toastId = toast.loading('Suppression en cours…');
 
     try {
@@ -667,7 +974,11 @@ export default function AdminProducts() {
       console.error('Erreur lors de la suppression:', error);
       toast.error(formatAppError(error, 'Erreur lors de la suppression'), { id: toastId });
     } finally {
-      setDeletingId(null);
+      setDeletingIds(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
     }
   };
 
@@ -679,9 +990,12 @@ export default function AdminProducts() {
     <div>
       <div className="flex items-center justify-between mb-8">
         <h1 className="text-3xl font-heading font-bold text-text-dark">Produits</h1>
-        <Button onClick={handleCreate} className="bg-secondary hover:bg-secondary/90">
-          <Plus size={20} className="mr-2" />
-          Nouveau produit
+        <Button
+          onClick={handleCreate}
+          className="bg-secondary hover:bg-secondary/90"
+          aria-label="Nouveau produit"
+        >
+          <Plus size={20} />
         </Button>
       </div>
 
@@ -715,7 +1029,7 @@ export default function AdminProducts() {
               </tr>
             ) : (
               products.map((product) => {
-                const isDeleting = deletingId === product.id;
+                const isDeleting = deletingIds.has(product.id);
                 return (
                 <tr
                   key={product.id}
@@ -766,7 +1080,7 @@ export default function AdminProducts() {
                       <button
                         type="button"
                         onClick={() => handleEdit(product)}
-                        disabled={isDeleting || Boolean(deletingId)}
+                        disabled={isDeleting}
                         className="p-2 text-blue-600 hover:text-blue-900 disabled:opacity-40 disabled:cursor-not-allowed"
                         title="Modifier"
                       >
@@ -775,7 +1089,7 @@ export default function AdminProducts() {
                       <button
                         type="button"
                         onClick={() => handleDelete(product.id)}
-                        disabled={isDeleting || Boolean(deletingId)}
+                        disabled={isDeleting}
                         className="p-2 text-red-600 hover:text-red-900 disabled:opacity-40 disabled:cursor-not-allowed min-w-[42px] min-h-[42px] inline-flex items-center justify-center"
                         title={isDeleting ? 'Suppression…' : 'Supprimer'}
                         aria-busy={isDeleting}
@@ -799,61 +1113,133 @@ export default function AdminProducts() {
 
       <Offcanvas
         isOpen={isOffcanvasOpen}
-        onClose={() => {
-          if (!isSaving) setIsOffcanvasOpen(false);
-        }}
+        onClose={closeProductOffcanvas}
         title={editingProduct ? 'Modifier le produit' : 'Nouveau produit'}
         position="right"
         width="xl"
         footer={
-          <div className="flex flex-col sm:flex-row justify-end gap-3">
-            <Button
-              type="button"
-              onClick={() => setIsOffcanvasOpen(false)}
-              disabled={isSaving}
-              className="bg-gray-200 hover:bg-gray-300 text-gray-800 w-full sm:w-auto disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Annuler
-            </Button>
-            <Button
-              type="button"
-              onClick={handleSave}
-              disabled={isSaving}
-              className="bg-secondary hover:bg-secondary/90 w-full sm:w-auto disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2"
-            >
-              {isSaving ? (
-                <>
-                  <Loader2 className="animate-spin shrink-0" size={18} aria-hidden />
-                  <span>Enregistrement…</span>
-                </>
-              ) : editingProduct ? (
-                'Modifier'
-              ) : (
-                'Créer'
-              )}
-            </Button>
+          <div className="flex flex-col gap-3">
+            {isSaving && (
+              <div
+                className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-800"
+                aria-live="polite"
+              >
+                <ol className="space-y-2 list-none m-0 p-0">
+                  <li className="flex items-center gap-2">
+                    <Check className="w-4 h-4 shrink-0 text-emerald-700" aria-hidden />
+                    <span>Champs validés</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    {saveStep === 'database' ? (
+                      <Loader2 className="w-4 h-4 shrink-0 animate-spin text-gray-600" aria-hidden />
+                    ) : (
+                      <Check className="w-4 h-4 shrink-0 text-emerald-700" aria-hidden />
+                    )}
+                    <span>Enregistrement sur le serveur</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    {saveStep === 'reload' ? (
+                      <Loader2 className="w-4 h-4 shrink-0 animate-spin text-gray-600" aria-hidden />
+                    ) : (
+                      <span
+                        className="w-4 h-4 shrink-0 inline-block rounded-sm border border-gray-300"
+                        aria-hidden
+                      />
+                    )}
+                    <span className={saveStep === 'reload' ? 'text-gray-900' : 'text-gray-500'}>
+                      Mise à jour de la liste
+                    </span>
+                  </li>
+                </ol>
+              </div>
+            )}
+            <div className="flex flex-col sm:flex-row justify-end gap-3">
+              <Button
+                type="button"
+                onClick={closeProductOffcanvas}
+                className="bg-gray-200 hover:bg-gray-300 text-gray-800 w-full sm:w-auto"
+              >
+                Annuler
+              </Button>
+              <Button
+                type="button"
+                onClick={handleSave}
+                disabled={isSaving}
+                className="bg-secondary hover:bg-secondary/90 w-full sm:w-auto disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2"
+              >
+                {isSaving ? (
+                  <>
+                    <Loader2 className="animate-spin shrink-0" size={18} aria-hidden />
+                    <span>
+                      {saveStep === 'reload' ? 'Actualisation de la liste…' : 'Enregistrement…'}
+                    </span>
+                  </>
+                ) : editingProduct ? (
+                  'Modifier'
+                ) : (
+                  'Créer'
+                )}
+              </Button>
+            </div>
           </div>
         }
       >
         <div className="space-y-4">
+          {Object.keys(fieldErrors).length > 0 && (
+            <div
+              className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-900"
+              role="alert"
+            >
+              {fieldErrors.general ??
+                'Certains champs sont invalides ou incomplets. Vérifiez les messages sous chaque champ.'}
+            </div>
+          )}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Nom *</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="admin-product-name">
+                Nom *
+              </label>
               <input
+                ref={nameFieldRef}
+                id="admin-product-name"
                 type="text"
                 value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-secondary"
-                required
+                onChange={(e) => {
+                  setFormData({ ...formData, name: e.target.value });
+                  clearFieldError('name');
+                }}
+                aria-invalid={Boolean(fieldErrors.name)}
+                aria-describedby={fieldErrors.name ? 'admin-product-name-error' : undefined}
+                autoComplete="off"
+                className={cn(
+                  'w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-secondary',
+                  fieldErrors.name ? 'border-red-600' : 'border-gray-300'
+                )}
               />
+              {fieldErrors.name && (
+                <p id="admin-product-name-error" className="mt-1 text-sm text-red-600" role="alert">
+                  {fieldErrors.name}
+                </p>
+              )}
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Catégorie *</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="admin-product-category">
+                Catégorie *
+              </label>
               <select
+                ref={categoryFieldRef}
+                id="admin-product-category"
                 value={formData.category}
-                onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-secondary"
-                required
+                onChange={(e) => {
+                  setFormData({ ...formData, category: e.target.value });
+                  clearFieldError('category');
+                }}
+                aria-invalid={Boolean(fieldErrors.category)}
+                aria-describedby={fieldErrors.category ? 'admin-product-category-error' : undefined}
+                className={cn(
+                  'w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-secondary',
+                  fieldErrors.category ? 'border-red-600' : 'border-gray-300'
+                )}
               >
                 <option value="">Sélectionner une catégorie</option>
                 {categories.map((cat) => (
@@ -862,26 +1248,71 @@ export default function AdminProducts() {
                   </option>
                 ))}
               </select>
+              {fieldErrors.category && (
+                <p id="admin-product-category-error" className="mt-1 text-sm text-red-600" role="alert">
+                  {fieldErrors.category}
+                </p>
+              )}
             </div>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Prix (MGA)</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="admin-product-price">
+                Prix (MGA) *
+              </label>
               <input
+                ref={priceFieldRef}
+                id="admin-product-price"
                 type="number"
+                min={0}
+                step="any"
                 value={formData.price}
-                onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-secondary"
+                onChange={(e) => {
+                  setFormData({ ...formData, price: e.target.value });
+                  clearFieldError('price');
+                }}
+                aria-invalid={Boolean(fieldErrors.price)}
+                aria-describedby={fieldErrors.price ? 'admin-product-price-error' : undefined}
+                className={cn(
+                  'w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-secondary',
+                  fieldErrors.price ? 'border-red-600' : 'border-gray-300'
+                )}
               />
+              {fieldErrors.price && (
+                <p id="admin-product-price-error" className="mt-1 text-sm text-red-600" role="alert">
+                  {fieldErrors.price}
+                </p>
+              )}
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Stock</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="admin-product-stock">
+                Stock{formData.hasVariants ? ' (variantes)' : ''}
+              </label>
               <input
+                ref={stockFieldRef}
+                id="admin-product-stock"
                 type="number"
+                min={0}
+                step={1}
                 value={formData.stock}
-                onChange={(e) => setFormData({ ...formData, stock: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-secondary"
+                onChange={(e) => {
+                  setFormData({ ...formData, stock: e.target.value });
+                  clearFieldError('stock');
+                }}
+                disabled={formData.hasVariants}
+                aria-invalid={Boolean(fieldErrors.stock)}
+                aria-describedby={fieldErrors.stock ? 'admin-product-stock-error' : undefined}
+                className={cn(
+                  'w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-secondary',
+                  fieldErrors.stock ? 'border-red-600' : 'border-gray-300',
+                  formData.hasVariants && 'bg-gray-100 text-gray-600 cursor-not-allowed'
+                )}
               />
+              {fieldErrors.stock && (
+                <p id="admin-product-stock-error" className="mt-1 text-sm text-red-600" role="alert">
+                  {fieldErrors.stock}
+                </p>
+              )}
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Marque</label>
@@ -934,12 +1365,7 @@ export default function AdminProducts() {
                 <div className="flex flex-wrap gap-1.5 items-center">
                   {/* Couleurs sélectionnées - Afficher toutes les couleurs sélectionnées avec leur hex */}
                   {selectedColors.length > 0 ? (
-                    selectedColors.map((selectedColor, index) => {
-                      // Debug
-                      if (index === 0) {
-                        console.log('selectedColors:', selectedColors);
-                        console.log('Première couleur:', selectedColor);
-                      }
+                    selectedColors.map((selectedColor) => {
                       // Trouver la couleur prédéfinie correspondante si elle existe
                       const predefinedColor = predefinedColors.find(c => c.name === selectedColor.name);
                       // Utiliser le hex de selectedColor en priorité, sinon celui de predefinedColor, sinon gris par défaut
@@ -1228,7 +1654,10 @@ export default function AdminProducts() {
                 type="checkbox"
                 id="isOnSale"
                 checked={formData.isOnSale}
-                onChange={(e) => setFormData({ ...formData, isOnSale: e.target.checked })}
+                onChange={(e) => {
+                  setFormData({ ...formData, isOnSale: e.target.checked });
+                  clearFieldError('salePrice');
+                }}
                 className="mr-2"
               />
               <label htmlFor="isOnSale" className="text-sm text-gray-700">
@@ -1238,15 +1667,32 @@ export default function AdminProducts() {
           </div>
           {formData.isOnSale && (
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Prix promotionnel (MGA)
+              <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="admin-product-sale-price">
+                Prix promotionnel (MGA) *
               </label>
               <input
+                ref={salePriceFieldRef}
+                id="admin-product-sale-price"
                 type="number"
+                min={0}
+                step="any"
                 value={formData.salePrice}
-                onChange={(e) => setFormData({ ...formData, salePrice: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-secondary"
+                onChange={(e) => {
+                  setFormData({ ...formData, salePrice: e.target.value });
+                  clearFieldError('salePrice');
+                }}
+                aria-invalid={Boolean(fieldErrors.salePrice)}
+                aria-describedby={fieldErrors.salePrice ? 'admin-product-sale-price-error' : undefined}
+                className={cn(
+                  'w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-secondary',
+                  fieldErrors.salePrice ? 'border-red-600' : 'border-gray-300'
+                )}
               />
+              {fieldErrors.salePrice && (
+                <p id="admin-product-sale-price-error" className="mt-1 text-sm text-red-600" role="alert">
+                  {fieldErrors.salePrice}
+                </p>
+              )}
             </div>
           )}
 
@@ -1264,6 +1710,7 @@ export default function AdminProducts() {
                   checked={formData.hasVariants}
                   onChange={(e) => {
                     setFormData({ ...formData, hasVariants: e.target.checked });
+                    clearFieldError('stock');
                     if (e.target.checked) {
                       setIsVariantsSectionOpen(true);
                     }
@@ -1893,6 +2340,10 @@ export default function AdminProducts() {
                         images: [...prev.images, ...uploadedUrls],
                       }));
                       toast.success(`${uploadedUrls.length} image(s) uploadée(s) avec succès`);
+                    } else if (files.length > 0) {
+                      toast.error(
+                        "Aucune image n'a été ajoutée. Vérifiez les messages d'erreur ou la configuration."
+                      );
                     }
 
                     if (variantFileInputRef.current) {
