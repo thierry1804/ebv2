@@ -9,7 +9,7 @@ import { Modal } from '../../components/ui/Modal';
 import { PageLoading } from '../../components/ui/PageLoading';
 import { useCategories } from '../../hooks/useCategories';
 import { predefinedColors as sharedPredefinedColors } from '../../config/colors';
-import { getColorNameFromHex } from '../../config/colorNames';
+import { getColorNameFromHex, getHexFromColorName } from '../../config/colorNames';
 import { convertToWebP } from '../../utils/imageUtils';
 import {
   uploadImageToImageApi,
@@ -29,6 +29,7 @@ import {
   getVariantDisplayName 
 } from '../../types/variants';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
+import { detectColorsFromImages } from '../../utils/colorDetection';
 import { formatAppError, extractErrorMessage } from '../../utils/errors';
 import { cn } from '../../utils/cn';
 
@@ -118,7 +119,10 @@ export default function AdminProducts() {
   const [customColorName, setCustomColorName] = useState('');
   const [customColorHexInput, setCustomColorHexInput] = useState('#1abc9c');
   const [isColorModalOpen, setIsColorModalOpen] = useState(false);
+  /** Noms des couleurs prédéfinies cochées dans la modal (ajout groupé). */
+  const [modalPresetSelection, setModalPresetSelection] = useState<Set<string>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const customColorNameInputRef = useRef<HTMLInputElement>(null);
   
   // États pour la gestion des variantes
   const [isVariantsSectionOpen, setIsVariantsSectionOpen] = useState(false);
@@ -506,7 +510,6 @@ export default function AdminProducts() {
       return;
     }
     
-    const isDark = isColorDark(hex);
     const newColor = { name: colorName, hex, custom: true };
     const updatedColors = [...selectedColors, newColor];
     setSelectedColors(updatedColors);
@@ -515,12 +518,53 @@ export default function AdminProducts() {
     setSelectedColorHex('#1abc9c');
     setCustomColorHexInput('#1abc9c');
     toast.success(`Couleur "${colorName}" ajoutée avec succès !`);
+    setTimeout(() => customColorNameInputRef.current?.focus(), 0);
   };
 
   const removeColor = (colorToRemove: { name: string; hex: string; custom: boolean }) => {
     const updatedColors = selectedColors.filter((c) => !(c.name === colorToRemove.name && c.hex === colorToRemove.hex));
     setSelectedColors(updatedColors);
     setFormData({ ...formData, colors: updatedColors.map(c => c.name).join(', ') });
+  };
+
+  const toggleModalPreset = (name: string) => {
+    setModalPresetSelection((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  };
+
+  const selectAllAvailablePresetsInModal = () => {
+    const names = predefinedColors
+      .filter((color) => !selectedColors.some((c) => c.name === color.name && !c.custom))
+      .map((c) => c.name);
+    setModalPresetSelection(new Set(names));
+  };
+
+  const applyModalPresetSelection = () => {
+    if (modalPresetSelection.size === 0) {
+      toast.error('Sélectionnez au moins une couleur dans la grille.');
+      return;
+    }
+    const updated = [...selectedColors];
+    let added = 0;
+    for (const name of modalPresetSelection) {
+      const def = predefinedColors.find((c) => c.name === name);
+      if (!def) continue;
+      if (updated.some((c) => c.name === def.name && !c.custom)) continue;
+      updated.push({ name: def.name, hex: def.hex, custom: false });
+      added++;
+    }
+    if (added === 0) {
+      toast.error('Aucune couleur nouvelle à ajouter.');
+      return;
+    }
+    setSelectedColors(updated);
+    setFormData({ ...formData, colors: updated.map((c) => c.name).join(', ') });
+    setModalPresetSelection(new Set());
+    toast.success(added === 1 ? '1 couleur ajoutée au produit.' : `${added} couleurs ajoutées au produit.`);
   };
 
   /** Upload fichier : API images si configurée, sinon repli Supabase Storage (bucket `products`), comme les catégories. */
@@ -604,6 +648,26 @@ export default function AdminProducts() {
           images: [...prev.images, ...uploadedUrls],
         }));
         toast.success(`${uploadedUrls.length} image(s) uploadée(s) avec succès`);
+
+        // Détection automatique des couleurs depuis les images uploadées
+        detectColorsFromImages(uploadedUrls)
+          .then((detected) => {
+            if (detected.length === 0) return;
+            setSelectedColors((prev) => {
+              const newColors = detected.filter(
+                (d) => !prev.some((p) => p.name === d.name),
+              );
+              if (newColors.length === 0) return prev;
+              toast.success(
+                `Couleur(s) détectée(s) : ${newColors.map((c) => c.name).join(', ')}`,
+              );
+              return [
+                ...prev,
+                ...newColors.map((c) => ({ name: c.name, hex: c.hex, custom: false })),
+              ];
+            });
+          })
+          .catch(() => { /* silencieux si la détection échoue */ });
       } else if (files.length > 0) {
         toast.error(
           "Aucune image n'a été ajoutée. Vérifiez les messages d'erreur ci-dessus ou la configuration."
@@ -688,6 +752,41 @@ export default function AdminProducts() {
 
     const newImages = formData.images.filter((_, i) => i !== index);
     setFormData({ ...formData, images: newImages });
+
+    // Re-détecter les couleurs depuis les images restantes
+    // et retirer celles qui ne correspondent plus (uniquement les non-custom)
+    if (newImages.length > 0) {
+      detectColorsFromImages(newImages)
+        .then((detected) => {
+          const detectedNames = new Set(detected.map((d) => d.name));
+          setSelectedColors((prev) => {
+            const filtered = prev.filter(
+              (c) => c.custom || detectedNames.has(c.name),
+            );
+            const removed = prev.filter(
+              (c) => !c.custom && !detectedNames.has(c.name),
+            );
+            if (removed.length > 0) {
+              toast.success(
+                `Couleur(s) retirée(s) : ${removed.map((c) => c.name).join(', ')}`,
+              );
+            }
+            return filtered;
+          });
+        })
+        .catch(() => {});
+    } else {
+      // Plus d'images → retirer toutes les couleurs auto-détectées
+      setSelectedColors((prev) => {
+        const autoColors = prev.filter((c) => !c.custom);
+        if (autoColors.length > 0) {
+          toast.success(
+            `Couleur(s) retirée(s) : ${autoColors.map((c) => c.name).join(', ')}`,
+          );
+        }
+        return prev.filter((c) => c.custom);
+      });
+    }
   };
 
   const handleSave = async () => {
@@ -1440,57 +1539,136 @@ export default function AdminProducts() {
               {/* Modal pour les couleurs non sélectionnées et l'ajout personnalisé */}
               <Modal
                 isOpen={isColorModalOpen}
-                onClose={() => setIsColorModalOpen(false)}
+                onClose={() => {
+                  setModalPresetSelection(new Set());
+                  setIsColorModalOpen(false);
+                }}
                 title="Ajouter des couleurs"
                 size="md"
                 showBackdrop={false}
                 draggable={true}
               >
                 <div className="space-y-6">
-                  {/* Couleurs non sélectionnées */}
                   <div>
-                    <p className="text-xs text-gray-600 mb-3 font-semibold uppercase tracking-wide">Couleurs disponibles</p>
-                    <div className="flex flex-wrap gap-1.5">
+                    <div className="flex flex-wrap items-start justify-between gap-2 mb-2">
+                      <div>
+                        <p className="text-sm font-medium text-gray-800">Couleurs prédéfinies</p>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          Cliquez pour sélectionner une ou plusieurs couleurs, puis validez en une fois.
+                        </p>
+                      </div>
+                      {predefinedColors.some(
+                        (c) => !selectedColors.some((s) => s.name === c.name && !s.custom)
+                      ) && (
+                        <div className="flex gap-2 shrink-0">
+                          <button
+                            type="button"
+                            onClick={selectAllAvailablePresetsInModal}
+                            className="text-xs text-secondary font-medium hover:underline"
+                          >
+                            Tout sélectionner
+                          </button>
+                          <span className="text-gray-300" aria-hidden>
+                            |
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setModalPresetSelection(new Set())}
+                            className="text-xs text-gray-600 font-medium hover:underline"
+                            disabled={modalPresetSelection.size === 0}
+                          >
+                            Effacer la sélection
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-2">
                       {predefinedColors
-                        .filter(color => !selectedColors.some(c => c.name === color.name && !c.custom))
+                        .filter((color) => !selectedColors.some((c) => c.name === color.name && !c.custom))
                         .map((color) => {
+                          const isPicked = modalPresetSelection.has(color.name);
+                          const hexValue = color.hex.replace('#', '');
+                          const r = parseInt(hexValue.slice(0, 2), 16);
+                          const g = parseInt(hexValue.slice(2, 4), 16);
+                          const b = parseInt(hexValue.slice(4, 6), 16);
+                          const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+                          const checkContrast = brightness < 140 ? 'text-white' : 'text-gray-900';
                           return (
                             <button
                               key={color.name}
                               type="button"
-                              onClick={() => {
-                                setCustomColorName(color.name);
-                                setSelectedColorHex(color.hex);
-                                setCustomColorHexInput(color.hex);
-                              }}
-                              className="relative w-8 h-8 rounded-full border-2 border-transparent hover:scale-110 hover:shadow-lg transition-all duration-300"
+                              aria-pressed={isPicked}
+                              onClick={() => toggleModalPreset(color.name)}
+                              className={cn(
+                                'relative w-9 h-9 rounded-full border-2 transition-colors duration-150',
+                                isPicked ? 'border-gray-800' : 'border-gray-200 hover:border-gray-400',
+                                color.name === 'Blanc' && !isPicked && 'border-gray-300'
+                              )}
                               style={{ backgroundColor: color.hex }}
                               title={color.name}
-                            />
+                            >
+                              {isPicked && (
+                                <Check
+                                  size={14}
+                                  className={cn(
+                                    'absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 drop-shadow-sm',
+                                    checkContrast
+                                  )}
+                                  strokeWidth={2.5}
+                                />
+                              )}
+                            </button>
                           );
                         })}
                     </div>
+                    {predefinedColors.every((c) =>
+                      selectedColors.some((s) => s.name === c.name && !s.custom)
+                    ) ? (
+                      <p className="text-xs text-gray-500 mt-3">Toutes les couleurs prédéfinies sont déjà sur le produit.</p>
+                    ) : null}
+                    <Button
+                      type="button"
+                      variant="primary"
+                      size="md"
+                      className="w-full mt-4"
+                      onClick={applyModalPresetSelection}
+                      disabled={modalPresetSelection.size === 0}
+                    >
+                      {modalPresetSelection.size === 0
+                        ? 'Ajouter les couleurs sélectionnées'
+                        : `Ajouter ${modalPresetSelection.size} couleur${modalPresetSelection.size > 1 ? 's' : ''} au produit`}
+                    </Button>
                   </div>
 
-                  {/* Ajout de couleur personnalisée */}
                   <div className="border-t border-gray-200 pt-4">
-                    <p className="text-xs text-gray-600 mb-3 font-semibold uppercase tracking-wide">Ajouter une couleur personnalisée</p>
+                    <p className="text-sm font-medium text-gray-800 mb-1">Couleur personnalisée</p>
+                    <p className="text-xs text-gray-500 mb-3">
+                      Si le nom correspond à une couleur connue (ex. Turquoise, Corail), le code et l’aperçu se mettent à jour. Sinon, ajustez le hex ou le nuancier. Vous pouvez en ajouter plusieurs sans fermer la fenêtre.
+                    </p>
                     <div className="space-y-3">
                       <div>
                         <label className="block text-xs text-gray-600 mb-1.5">Nom de la couleur</label>
                         <input
+                          ref={customColorNameInputRef}
                           type="text"
                           value={customColorName}
-                          onChange={(e) => setCustomColorName(e.target.value)}
-                          onKeyPress={(e) => {
+                          onChange={(e) => {
+                            const name = e.target.value;
+                            setCustomColorName(name);
+                            const resolved = getHexFromColorName(name);
+                            if (resolved) {
+                              setSelectedColorHex(resolved);
+                              setCustomColorHexInput(resolved);
+                            }
+                          }}
+                          onKeyDown={(e) => {
                             if (e.key === 'Enter') {
                               e.preventDefault();
                               addCustomColor();
-                              setIsColorModalOpen(false);
                             }
                           }}
                           placeholder="Ex: Turquoise, Corail, Menthe..."
-                          className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary text-sm"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary text-sm"
                         />
                       </div>
                       <div>
@@ -1503,10 +1681,9 @@ export default function AdminProducts() {
                               const newHex = e.target.value;
                               setSelectedColorHex(newHex);
                               setCustomColorHexInput(newHex);
-                              // Toujours mettre à jour le nom de la couleur quand la couleur change
                               setCustomColorName(getColorNameFromHex(newHex));
                             }}
-                            className="w-14 h-11 border-2 border-gray-300 rounded-lg cursor-pointer"
+                            className="w-14 h-11 border border-gray-300 rounded-lg cursor-pointer"
                             title="Choisir une couleur"
                           />
                           <input
@@ -1517,27 +1694,25 @@ export default function AdminProducts() {
                               setCustomColorHexInput(hex);
                               if (/^#[0-9A-F]{6}$/i.test(hex)) {
                                 setSelectedColorHex(hex);
-                                // Toujours mettre à jour le nom de la couleur quand le code hex change
                                 setCustomColorName(getColorNameFromHex(hex));
                               }
                             }}
                             placeholder="#000000"
-                            className="flex-1 px-3 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary text-sm font-mono"
+                            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary text-sm font-mono"
                           />
                         </div>
                       </div>
-                      <button
+                      <Button
                         type="button"
-                        onClick={() => {
-                          addCustomColor();
-                          setIsColorModalOpen(false);
-                        }}
+                        variant="secondary"
+                        size="md"
+                        className="w-full inline-flex items-center justify-center gap-2"
+                        onClick={() => addCustomColor()}
                         disabled={!customColorName.trim()}
-                        className="w-full px-4 py-2.5 bg-blue-500 hover:bg-blue-600 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 font-semibold text-sm flex items-center justify-center gap-2"
                       >
-                        <Plus size={18} />
+                        <Plus size={18} aria-hidden />
                         Ajouter cette couleur
-                      </button>
+                      </Button>
                     </div>
                   </div>
                 </div>

@@ -1,5 +1,8 @@
 // Système de nommage de couleurs en français - 30 000+ références
 
+import { predefinedColors } from './colors';
+import { lookupW3cCssColorHex } from './w3cColorKeywords';
+
 export interface ColorNameEntry {
   hex: string;
   name: string;
@@ -110,6 +113,95 @@ const knownColors: ColorNameEntry[] = [
   { hex: '#654321', name: 'Brun chocolat' },
   { hex: '#D2691E', name: 'Brun caramel' },
   { hex: '#CD853F', name: 'Ocre' },
+  // Beiges mode / anglais courant
+  { hex: '#C4A574', name: 'Camel' },
+  { hex: '#C4A574', name: 'Chameau' },
+
+  // Neutres, gris et beiges (textile / déco)
+  { hex: '#B8B8B8', name: 'Gris clair' },
+  { hex: '#4A4A4A', name: 'Gris foncé' },
+  { hex: '#9E9E9E', name: 'Gris souris' },
+  { hex: '#8B8589', name: 'Taupe' },
+  { hex: '#B8B0A8', name: 'Greige' },
+  { hex: '#F5F0E6', name: 'Écru' },
+  { hex: '#F0EAD6', name: 'Ivoire mode' },
+  { hex: '#FFFDD0', name: 'Crème' },
+  { hex: '#E8DCCB', name: 'Lin' },
+  { hex: '#E5D4C8', name: 'Nude' },
+  { hex: '#DEB887', name: 'Sable' },
+  { hex: '#D2B48C', name: 'Tan' },
+  { hex: '#C2B280', name: 'Sable doré' },
+  { hex: '#BCA88E', name: 'Mastic' },
+  { hex: '#D4C4B0', name: 'Coquille d\'œuf' },
+  { hex: '#BFA88F', name: 'Chanvre' },
+
+  // Bruns et tons chauds
+  { hex: '#6F4E37', name: 'Café' },
+  { hex: '#7B5544', name: 'Moka' },
+  { hex: '#CB8B5E', name: 'Noisette' },
+  { hex: '#8B4513', name: 'Cognac' },
+  { hex: '#5D4037', name: 'Cuir' },
+  { hex: '#6B4423', name: 'Tabac' },
+  { hex: '#5C4033', name: 'Havane' },
+  { hex: '#704214', name: 'Marron foncé' },
+  { hex: '#A67B5B', name: 'Cannelle' },
+
+  // Rouges et roses (mode)
+  { hex: '#DE3163', name: 'Cerise' },
+  { hex: '#E0115F', name: 'Rubis' },
+  { hex: '#9B2335', name: 'Grenat' },
+  { hex: '#E30B5C', name: 'Framboise' },
+  { hex: '#C08081', name: 'Vieux rose' },
+  { hex: '#E6A8A6', name: 'Rose thé' },
+  { hex: '#F4C2C2', name: 'Rose pâle mode' },
+  { hex: '#BC8F8F', name: 'Rosé' },
+  { hex: '#FFDAB9', name: 'Pêche' },
+  { hex: '#E2725B', name: 'Corail foncé' },
+
+  // Bleus (y compris synonymes anglais)
+  { hex: '#1560BD', name: 'Denim' },
+  { hex: '#4B0082', name: 'Indigo' },
+  { hex: '#191970', name: 'Bleu nuit' },
+  { hex: '#000080', name: 'Navy' },
+  { hex: '#36454F', name: 'Bleu ardoise' },
+  { hex: '#2C5F7C', name: 'Bleu pétrole' },
+  { hex: '#6699CC', name: 'Bleu pervenche' },
+  { hex: '#73A9C2', name: 'Bleu layette' },
+  { hex: '#4682B4', name: 'Bleu acier' },
+  { hex: '#708090', name: 'Bleu ardoise clair' },
+
+  // Verts
+  { hex: '#9CAF88', name: 'Vert sauge' },
+  { hex: '#8F9779', name: 'Sauge' },
+  { hex: '#C3B091', name: 'Kaki' },
+  { hex: '#6B8E23', name: 'Kaki militaire' },
+  { hex: '#4A5D23', name: 'Vert mousse' },
+  { hex: '#3D5229', name: 'Vert bouteille' },
+  { hex: '#2F4F4F', name: 'Vert pin' },
+  { hex: '#50C878', name: 'Émeraude' },
+
+  // Violets et mauves
+  { hex: '#E0B0FF', name: 'Mauve' },
+  { hex: '#C8A2C8', name: 'Lilas' },
+  { hex: '#B784A7', name: 'Parme' },
+
+  // Métalliques (approximation écran)
+  { hex: '#C0C0C0', name: 'Argent' },
+  { hex: '#FFD700', name: 'Doré' },
+  { hex: '#B87333', name: 'Cuivre' },
+  { hex: '#CD7F32', name: 'Bronze' },
+
+  // Synonymes anglais fréquents (même teintes que des classiques FR)
+  { hex: '#FFFFFF', name: 'White' },
+  { hex: '#000000', name: 'Black' },
+  { hex: '#F5F5DC', name: 'Beige' },
+  { hex: '#800020', name: 'Burgundy' },
+  { hex: '#722F37', name: 'Wine' },
+  { hex: '#9CAF88', name: 'Sage' },
+  { hex: '#F0E68C', name: 'Khaki clair' },
+  { hex: '#FFFFF0', name: 'Ivory' },
+  { hex: '#FFF8E7', name: 'Cream' },
+  { hex: '#D2B48C', name: 'Sand' },
 ];
 
 function rgbToHsl(r: number, g: number, b: number): { h: number; s: number; l: number } {
@@ -432,4 +524,35 @@ export function getColorNameFromHex(hex: string): string {
   const name = minDist < 8 ? closest.name : generateFrenchColorName(normalized);
   colorCache.set(normalized, name);
   return name;
+}
+
+/**
+ * Retourne un code hex si le libellé correspond à une couleur connue
+ * (palette produit, base étendue, ou préfixe unique parmi les correspondances).
+ * Sinon null — le champ nom reste libre sans forcer l’aperçu.
+ */
+export function getHexFromColorName(query: string): string | null {
+  const q = query.trim();
+  if (q.length < 2) return null;
+  const lower = q.toLowerCase();
+
+  const pre = predefinedColors.find((c) => c.name.toLowerCase() === lower);
+  if (pre) return pre.hex.toUpperCase();
+
+  const w3cHex = lookupW3cCssColorHex(q);
+  if (w3cHex) return w3cHex;
+
+  const exactDb = colorNamesDatabase.find((e) => e.name.toLowerCase() === lower);
+  if (exactDb) return exactDb.hex.toUpperCase();
+
+  if (lower.length >= 3) {
+    const matchesPred = predefinedColors.filter((c) => c.name.toLowerCase().startsWith(lower));
+    const matchesDb = colorNamesDatabase.filter((e) => e.name.toLowerCase().startsWith(lower));
+    const hexes = new Set<string>();
+    for (const { hex } of matchesPred) hexes.add(hex.toUpperCase());
+    for (const { hex } of matchesDb) hexes.add(hex.toUpperCase());
+    if (hexes.size === 1) return [...hexes][0];
+  }
+
+  return null;
 }
