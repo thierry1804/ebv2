@@ -18,6 +18,8 @@ export interface Product {
   stock: number;
   rating: number; // 3.5-5
   reviewCount: number;
+  /** Date de création en base (ISO), si disponible */
+  createdAt?: string;
   isNew?: boolean;
   isOnSale?: boolean;
   salePrice?: number;

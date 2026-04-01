@@ -117,6 +117,7 @@ export default function AdminProducts() {
   const [saveStep, setSaveStep] = useState<'idle' | 'database' | 'reload'>('idle');
   const [fieldErrors, setFieldErrors] = useState<ProductFormErrors>({});
   const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
+  const [togglingNewIds, setTogglingNewIds] = useState<Set<string>>(new Set());
   const [selectedColors, setSelectedColors] = useState<Array<{name: string, hex: string, custom: boolean}>>([]);
   const [selectedColorHex, setSelectedColorHex] = useState<string>('#1abc9c');
   const [customColorName, setCustomColorName] = useState('');
@@ -346,6 +347,7 @@ export default function AdminProducts() {
             stock: p.stock || 0,
             rating: p.rating || 0,
             reviewCount: p.review_count || 0,
+            createdAt: p.created_at ?? undefined,
             isNew: p.is_new || false,
             isOnSale: p.is_on_sale || false,
             salePrice: p.sale_price ?? undefined,
@@ -1073,6 +1075,34 @@ export default function AdminProducts() {
     }
   };
 
+  const handleToggleIsNew = async (product: Product, checked: boolean) => {
+    if (togglingNewIds.has(product.id)) return;
+    setTogglingNewIds((prev) => new Set(prev).add(product.id));
+    try {
+      const { error } = await supabase
+        .from('products')
+        .update({ is_new: checked })
+        .eq('id', product.id);
+      if (error) throw error;
+      setProducts((prev) =>
+        prev.map((p) => (p.id === product.id ? { ...p, isNew: checked } : p))
+      );
+      if (editingProduct?.id === product.id) {
+        setFormData((fd) => ({ ...fd, isNew: checked }));
+      }
+      toast.success(checked ? 'Produit marqué comme nouveauté' : 'Nouveauté désactivée');
+    } catch (error: unknown) {
+      console.error('Erreur lors de la mise à jour nouveauté:', error);
+      toast.error(formatAppError(error, 'Impossible de mettre à jour la nouveauté'));
+    } finally {
+      setTogglingNewIds((prev) => {
+        const next = new Set(prev);
+        next.delete(product.id);
+        return next;
+      });
+    }
+  };
+
   if (isLoading) {
     return <PageLoading />;
   }
@@ -1106,6 +1136,12 @@ export default function AdminProducts() {
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                 Stock
               </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                Créé le
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                Nouveauté
+              </th>
               <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">
                 Actions
               </th>
@@ -1114,13 +1150,14 @@ export default function AdminProducts() {
           <tbody className="divide-y divide-gray-200">
             {products.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-6 py-8 text-center text-gray-500">
+                <td colSpan={7} className="px-6 py-8 text-center text-gray-500">
                   Aucun produit trouvé. Créez une table "products" dans Supabase.
                 </td>
               </tr>
             ) : (
               products.map((product) => {
                 const isDeleting = deletingIds.has(product.id);
+                const isTogglingNew = togglingNewIds.has(product.id);
                 return (
                 <tr
                   key={product.id}
@@ -1165,6 +1202,36 @@ export default function AdminProducts() {
                     >
                       {product.stock} en stock
                     </span>
+                  </td>
+                  <td className="px-6 py-4 text-sm text-gray-600 whitespace-nowrap">
+                    {product.createdAt
+                      ? new Date(product.createdAt).toLocaleString('fr-FR', {
+                          day: '2-digit',
+                          month: 'short',
+                          year: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })
+                      : '—'}
+                  </td>
+                  <td className="px-6 py-4">
+                    <label className="inline-flex items-center gap-2 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        className="rounded border-gray-300 text-secondary focus:ring-secondary"
+                        checked={!!product.isNew}
+                        disabled={isDeleting || isTogglingNew}
+                        onChange={(e) => handleToggleIsNew(product, e.target.checked)}
+                        aria-label={
+                          product.isNew
+                            ? 'Désactiver la nouveauté'
+                            : 'Activer comme nouveauté'
+                        }
+                      />
+                      {isTogglingNew && (
+                        <Loader2 className="animate-spin text-gray-500" size={14} aria-hidden />
+                      )}
+                    </label>
                   </td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex items-center justify-end gap-2">
