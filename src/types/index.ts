@@ -1,3 +1,11 @@
+/** Ligne unique `id = global` — mode maintenance et message optionnel */
+export interface SiteSettings {
+  id: string;
+  maintenance_enabled: boolean;
+  maintenance_message: string | null;
+  updated_at?: string;
+}
+
 // Type pour une couleur avec son code hexadécimal
 export interface ColorWithHex {
   name: string;

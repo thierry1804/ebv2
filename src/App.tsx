@@ -10,6 +10,7 @@ import { ProtectedRoute } from './components/admin/ProtectedRoute';
 import { GoogleAnalytics } from './components/analytics/GoogleAnalytics';
 import { ConfirmProvider } from './components/ui/ConfirmDialog';
 import { PageLoading } from './components/ui/PageLoading';
+import { MaintenanceGate } from './components/MaintenanceGate';
 
 // Lazy load des pages publiques
 const Home = lazy(() => import('./pages/Home'));
@@ -39,6 +40,7 @@ const AdminLandingPage = lazy(() => import('./pages/admin/AdminLandingPage'));
 const AdminCategories = lazy(() => import('./pages/admin/AdminCategories'));
 const AdminPromoCodes = lazy(() => import('./pages/admin/AdminPromoCodes'));
 const AdminOrders = lazy(() => import('./pages/admin/AdminOrders'));
+const AdminSiteSettings = lazy(() => import('./pages/admin/AdminSiteSettings'));
 
 // Composant de chargement (pour les pages lazy-load)
 const LoadingFallback = () => <PageLoading />;
@@ -48,6 +50,7 @@ function App() {
     <BrowserRouter>
       <ConfirmProvider>
       <GoogleAnalytics />
+      <MaintenanceGate>
       <AuthProvider>
         <CartProvider>
           <WishlistProvider>
@@ -115,6 +118,7 @@ function App() {
                     <Route path="categories" element={<AdminCategories />} />
                     <Route path="codes-promo" element={<AdminPromoCodes />} />
                     <Route path="commandes" element={<AdminOrders />} />
+                    <Route path="parametres-site" element={<AdminSiteSettings />} />
                   </Route>
                 </Route>
               </Routes>
@@ -122,6 +126,7 @@ function App() {
           </WishlistProvider>
         </CartProvider>
       </AuthProvider>
+      </MaintenanceGate>
       </ConfirmProvider>
     </BrowserRouter>
   );

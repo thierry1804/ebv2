@@ -15,6 +15,7 @@ import {
   Tags,
   Ticket,
   Package,
+  Wrench,
 } from 'lucide-react';
 
 interface AdminLayoutProps {
@@ -42,6 +43,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
     { path: '/admin/articles', icon: FileText, label: 'Articles de blog' },
     { path: '/admin/contenu', icon: Settings, label: 'Contenu du site' },
     { path: '/admin/landing-page', icon: Layout, label: 'Landing Page' },
+    { path: '/admin/parametres-site', icon: Wrench, label: 'Paramètres site' },
   ];
 
   return (
