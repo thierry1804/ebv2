@@ -258,7 +258,7 @@ export default function AdminCategories() {
         description: formData.description.trim() || null,
         display_order: formData.display_order,
         is_active: formData.is_active,
-        updated_by: user.id,
+        updated_by: adminUser.id,
       };
 
       if (editingCategory) {
