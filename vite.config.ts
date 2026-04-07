@@ -19,8 +19,8 @@ export default defineConfig({
             // React et toutes ses dépendances dans le même chunk
             // Cela garantit que React est toujours disponible avant les autres vendors
             if (
-              id.includes('react') || 
-              id.includes('react-dom') || 
+              id.includes('react') ||
+              id.includes('react-dom') ||
               id.includes('react-router') ||
               id.includes('framer-motion') || // Dépend de React
               id.includes('react-hot-toast')   // Dépend de React
@@ -34,17 +34,17 @@ export default defineConfig({
             // Autres vendors (lucide-react, etc. - pas de dépendance React)
             return 'vendor';
           }
-          
+
           // Admin chunks - toutes les pages admin
           if (id.includes('/pages/admin/')) {
             return 'admin';
           }
-          
+
           // Public pages chunk
           if (id.includes('/pages/')) {
             return 'pages';
           }
-          
+
           // Components chunk
           if (id.includes('/components/')) {
             return 'components';

@@ -12,7 +12,9 @@ interface CartContextType {
     quantity?: number,
     variantId?: string | null,
     variantSku?: string | null,
-    variantOptions?: Array<{ name: string; value: string }>
+    variantOptions?: Array<{ name: string; value: string }>,
+    unitPrice?: number,
+    variantImageUrl?: string | null
   ) => void;
   removeItem: (itemId: string) => void;
   updateQuantity: (itemId: string, quantity: number) => void;
@@ -184,7 +186,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
     quantity = 1,
     variantId?: string | null,
     variantSku?: string | null,
-    variantOptions?: Array<{ name: string; value: string }>
+    variantOptions?: Array<{ name: string; value: string }>,
+    unitPrice?: number,
+    variantImageUrl?: string | null
   ) => {
     setItems((prevItems) => {
       // Recherche d'un article existant
@@ -222,11 +226,15 @@ export function CartProvider({ children }: { children: ReactNode }) {
         size,
         color,
         quantity,
-        price: product.salePrice || product.price,
+        price:
+          typeof unitPrice === 'number' && Number.isFinite(unitPrice)
+            ? unitPrice
+            : (product.salePrice || product.price),
         // Nouvelles propriétés pour les variantes
         variantId: variantId || null,
         variantSku: variantSku || null,
         variantOptions: variantOptions || undefined,
+        variantImageUrl: variantImageUrl || undefined,
       };
 
       return [...prevItems, newItem];

@@ -1,6 +1,6 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { Star, Heart, ShoppingCart, ArrowLeft } from 'lucide-react';
+import { Star, Heart, ShoppingCart, ArrowLeft, ExternalLink } from 'lucide-react';
 import { ProductGallery } from '../components/product/ProductGallery';
 import { SizeSelector } from '../components/product/SizeSelector';
 import { ColorSelector } from '../components/product/ColorSelector';
@@ -18,7 +18,8 @@ import toast from 'react-hot-toast';
 import { SEO } from '../components/seo/SEO';
 import { analytics } from '../hooks/useGoogleAnalytics';
 import { useProductVariants } from '../hooks/useProductVariants';
-import { normalizeImageApiUrl, normalizeProductImageUrls } from '../lib/imageApi';
+import { areImageUrlsSameAsset, normalizeImageApiUrl, normalizeProductImageUrls } from '../lib/imageApi';
+import { cn } from '../utils/cn';
 import { ProductVariant, getVariantDisplayName } from '../types/variants';
 
 export default function ProductDetail() {
@@ -40,37 +41,137 @@ export default function ProductDetail() {
   
   // État pour les variantes
   const [selectedOptions, setSelectedOptions] = useState<Record<string, string>>({});
-  
+  const [activeImageIndex, setActiveImageIndex] = useState(0);
+
   // Hook pour les variantes
-  const { 
-    variants, 
-    options: variantOptions, 
+  const {
+    variants,
+    options: variantOptions,
     isLoading: isLoadingVariants,
     findVariant,
     getTotalStock,
     getPriceRange
-  } = useProductVariants(product?.hasVariants ? product?.id || null : null);
-  
-  // Variante sélectionnée
-  const selectedVariant = useMemo((): ProductVariant | null => {
-    if (!product?.hasVariants || variantOptions.length === 0) return null;
-    // Vérifier que toutes les options sont sélectionnées
-    const allSelected = variantOptions.every(opt => selectedOptions[opt.id]);
-    if (!allSelected) return null;
-    return findVariant(selectedOptions);
-  }, [product?.hasVariants, variantOptions, selectedOptions, findVariant]);
+  } = useProductVariants(id ?? null);
 
-  // Suivre la vue du produit avec Google Analytics
-  // IMPORTANT: Ce hook doit être appelé AVANT tout return conditionnel
-  useEffect(() => {
-    if (product) {
-      const displayPrice = product.salePrice || product.price;
-      analytics.viewProduct(product.id, product.name, displayPrice);
-    }
-  }, [product?.id, product?.name, product?.salePrice, product?.price]);
+  // Détecte si les variantes sont basées sur les images (pas d'options classiques)
+  const isImageVariants = useMemo(() => {
+    if (!product?.hasVariants || variants.length === 0) return false;
+    return variants.every(v => v.options.length === 0);
+  }, [product?.hasVariants, variants]);
 
   // Prix / plage / stock : hooks toujours appelés (pas après un return) pour éviter l'erreur React #310
   const hasVariants = Boolean(product && product.hasVariants && variants.length > 0);
+
+  /** Variante issue des options (taille, couleur…) — si plusieurs lignes partagent les mêmes options, findVariant renvoie toujours la première */
+  const optionsBasedVariant = useMemo((): ProductVariant | null => {
+    if (isImageVariants) return null;
+    if (!product?.hasVariants || variantOptions.length === 0) return null;
+    if (!variantOptions.every((opt) => selectedOptions[opt.id])) return null;
+    return findVariant(selectedOptions);
+  }, [isImageVariants, product?.hasVariants, variantOptions, selectedOptions, findVariant]);
+
+  /**
+   * Sous-galerie d’une variante : uniquement si elle a **plusieurs** photos propres.
+   * (Une seule image par variante = cas admin « prix par photo » : on garde la galerie produit complète.)
+   */
+  const usesVariantOnlyGallery = useMemo(
+    () =>
+      Boolean(
+        hasVariants &&
+          !isImageVariants &&
+          optionsBasedVariant &&
+          optionsBasedVariant.images &&
+          optionsBasedVariant.images.length > 1
+      ),
+    [hasVariants, isImageVariants, optionsBasedVariant]
+  );
+
+  const galleryImages = useMemo(() => {
+    if (!product) return [];
+    if (usesVariantOnlyGallery && optionsBasedVariant?.images?.length) {
+      return optionsBasedVariant.images;
+    }
+    return product.images ?? [];
+  }, [product, usesVariantOnlyGallery, optionsBasedVariant?.images]);
+
+  /** Résout la ligne de variante pour la miniature active : URL puis position (= index galerie admin) */
+  const resolveVariantForGalleryIndex = useCallback(
+    (index: number, imageList: string[]): ProductVariant | null => {
+      if (!variants.length || imageList.length === 0 || index < 0 || index >= imageList.length) {
+        return null;
+      }
+      const raw = imageList[index];
+      if (!raw) return null;
+      const url = normalizeImageApiUrl(raw);
+      const byUrl = variants.find((v) =>
+        (v.images ?? []).some((img) => areImageUrlsSameAsset(img, url))
+      );
+      if (byUrl) return byUrl;
+      return variants.find((v) => v.position === index) ?? null;
+    },
+    [variants]
+  );
+
+  // Variante sélectionnée par image (mode 100 % images, sans options)
+  const imageVariant = useMemo((): ProductVariant | null => {
+    if (!isImageVariants || variants.length === 0 || !product?.images?.length) return null;
+    return resolveVariantForGalleryIndex(activeImageIndex, product.images);
+  }, [isImageVariants, variants, activeImageIndex, product?.images, resolveVariantForGalleryIndex]);
+
+  /** Variante alignée sur la photo affichée (indispensable quand toutes les lignes ont la même taille/couleur) */
+  const variantResolvedByGallery = useMemo((): ProductVariant | null => {
+    if (isImageVariants || !variants.length) return null;
+    if (usesVariantOnlyGallery && optionsBasedVariant?.images?.length) {
+      return resolveVariantForGalleryIndex(activeImageIndex, optionsBasedVariant.images);
+    }
+    if (!product?.images?.length) return null;
+    return resolveVariantForGalleryIndex(activeImageIndex, product.images);
+  }, [
+    isImageVariants,
+    variants.length,
+    usesVariantOnlyGallery,
+    optionsBasedVariant?.images,
+    product?.images,
+    activeImageIndex,
+    resolveVariantForGalleryIndex,
+  ]);
+
+  const selectedVariant = useMemo((): ProductVariant | null => {
+    if (isImageVariants) return imageVariant;
+    return variantResolvedByGallery ?? optionsBasedVariant;
+  }, [isImageVariants, imageVariant, variantResolvedByGallery, optionsBasedVariant]);
+
+  /** Clic sur une miniature : met à jour l’index + options (taille / couleur) pour coller au prix « par photo » admin */
+  const handleGalleryImageChange = useCallback(
+    (index: number) => {
+      setActiveImageIndex(index);
+      if (!product?.images?.length || variants.length === 0) return;
+      if (isImageVariants || usesVariantOnlyGallery) return;
+
+      const raw = product.images[index];
+      if (!raw) return;
+      const url = normalizeImageApiUrl(raw);
+      const matched = variants.find((v) =>
+        (v.images ?? []).some((img) => areImageUrlsSameAsset(img, url))
+      );
+      if (!matched?.options?.length) return;
+
+      setSelectedOptions((prev) => {
+        const next = { ...prev };
+        for (const o of matched.options) {
+          next[o.optionId] = o.valueId;
+        }
+        return next;
+      });
+    },
+    [product?.images, variants, isImageVariants, usesVariantOnlyGallery]
+  );
+
+  /** Index de miniature synchronisé avec le parent (variantes par image, ou options + galerie produit complète) */
+  const galleryIndexControlled = Boolean(
+    hasVariants &&
+      (isImageVariants || (!usesVariantOnlyGallery && (product?.images?.length ?? 0) > 1))
+  );
 
   const displayPrice = useMemo(() => {
     if (!product) return 0;
@@ -92,12 +193,101 @@ export default function ProductDetail() {
     if (!product) return 0;
     if (hasVariants) {
       if (selectedVariant) {
+        // Variantes "par image" (admin: simple checkbox dispo/rupture) :
+        // on ne limite pas artificiellement à 1 côté front.
+        if (isImageVariants) {
+          return selectedVariant.isAvailable && selectedVariant.stock > 0 ? 99 : 0;
+        }
         return selectedVariant.stock;
       }
       return getTotalStock();
     }
     return product.stock;
-  }, [product, hasVariants, selectedVariant, getTotalStock]);
+  }, [product, hasVariants, selectedVariant, getTotalStock, isImageVariants]);
+
+  const prevUsesVariantOnlyGalleryRef = useRef(usesVariantOnlyGallery);
+  useEffect(() => {
+    if (galleryImages.length === 0) {
+      setActiveImageIndex(0);
+      return;
+    }
+    if (prevUsesVariantOnlyGalleryRef.current !== usesVariantOnlyGallery) {
+      prevUsesVariantOnlyGalleryRef.current = usesVariantOnlyGallery;
+      setActiveImageIndex(0);
+      return;
+    }
+    setActiveImageIndex((i) => Math.min(i, galleryImages.length - 1));
+  }, [galleryImages.length, usesVariantOnlyGallery]);
+
+  // Suivre la vue du produit avec Google Analytics (après displayPrice)
+  // IMPORTANT : avant tout return conditionnel
+  useEffect(() => {
+    if (product) {
+      analytics.viewProduct(product.id, product.name, displayPrice);
+    }
+  }, [product?.id, product?.name, displayPrice]);
+
+  // Réinitialiser taille / couleur / variantes / quantité à chaque changement de produit (évite IDs d’options obsolètes)
+  useLayoutEffect(() => {
+    setSelectedOptions({});
+    setSelectedSize(null);
+    setSelectedColor(null);
+    setQuantity(1);
+    setActiveImageIndex(0);
+  }, [id]);
+
+  // Pré-sélectionner une variante par défaut (priorité : en stock) pour afficher prix / stock cohérents
+  useEffect(() => {
+    if (!product?.hasVariants || isImageVariants || isLoadingVariants) return;
+    if (variantOptions.length === 0 || variants.length === 0) return;
+
+    setSelectedOptions((prev) => {
+      const cleaned = Object.fromEntries(
+        Object.entries(prev).filter(([key]) => variantOptions.some((o) => o.id === key))
+      );
+
+      const allFilled = variantOptions.every((o) => cleaned[o.id]);
+      if (allFilled) {
+        const unchanged =
+          variantOptions.every((o) => prev[o.id] === cleaned[o.id]) &&
+          Object.keys(prev).length === variantOptions.length;
+        return unchanged ? prev : cleaned;
+      }
+
+      const noneFilled = variantOptions.every((o) => !cleaned[o.id]);
+      if (!noneFilled) return cleaned;
+
+      const matchesOptionCount = (v: ProductVariant) => v.options.length === variantOptions.length;
+      const pick =
+        variants.find((v) => matchesOptionCount(v) && v.isAvailable && v.stock > 0) ||
+        variants.find((v) => matchesOptionCount(v) && v.isAvailable) ||
+        variants.find(matchesOptionCount) ||
+        null;
+      if (!pick) return cleaned;
+
+      const next: Record<string, string> = { ...cleaned };
+      for (const o of pick.options) {
+        next[o.optionId] = o.valueId;
+      }
+      return next;
+    });
+  }, [product?.hasVariants, isImageVariants, isLoadingVariants, variantOptions, variants]);
+
+  useEffect(() => {
+    setQuantity((q) => Math.min(Math.max(1, q), Math.max(currentStock, 1)));
+  }, [currentStock]);
+
+  // Auto-sélectionner la première couleur de la variante (ou du produit sans variantes)
+  useEffect(() => {
+    const variantColors = selectedVariant?.colors;
+    if (variantColors && variantColors.length > 0) {
+      setSelectedColor(variantColors[0].name);
+    } else if (!hasVariants && product?.colors && product.colors.length > 0) {
+      const first = product.colors[0];
+      const name = typeof first === 'string' ? first : first.name;
+      if (name) setSelectedColor(name);
+    }
+  }, [selectedVariant?.id, selectedVariant?.colors, hasVariants, product?.colors]);
 
   if (!product) {
     return (
@@ -118,55 +308,100 @@ export default function ProductDetail() {
     .filter((p) => p.category === product.category && p.id !== product.id)
     .slice(0, 4);
 
+  // Pour les variantes-images : est-ce que la variante active est en stock ?
+  // null = l'image active n'est pas une variante (galerie seulement)
+  const imageVariantInStock = isImageVariants
+    ? (imageVariant ? imageVariant.isAvailable && imageVariant.stock > 0 : null)
+    : null;
+  const activeGalleryImageUrl =
+    galleryImages.length > 0
+      ? normalizeImageApiUrl(galleryImages[Math.min(activeImageIndex, galleryImages.length - 1)] || '')
+      : undefined;
+
   const handleAddToCart = () => {
-    // Si le produit a des variantes, vérifier qu'une variante est sélectionnée
+    // Résoudre la couleur : couleur de la variante > couleur sélectionnée manuellement
+    const variantColor = selectedVariant?.colors?.[0]?.name ?? null;
+    const resolvedColor = variantColor || selectedColor;
+
+    // Vérifier la sélection de couleur uniquement pour les produits sans variantes
+    if (!hasVariants && !isImageVariants && product.colors && product.colors.length > 0 && !resolvedColor) {
+      toast.error('Veuillez sélectionner une couleur');
+      return;
+    }
+
+    // Pour les variantes-images
+    if (isImageVariants) {
+      if (imageVariant) {
+        // L'image active correspond à une variante achetable
+        if (!imageVariant.isAvailable || imageVariant.stock === 0) {
+          toast.error('Ce modèle est en rupture de stock');
+          return;
+        }
+        addItem(
+          product,
+          null,
+          resolvedColor,
+          quantity,
+          imageVariant.id,
+          imageVariant.sku,
+          [{ name: 'Modèle', value: `Image ${activeImageIndex + 1}` }],
+          displayPrice,
+          activeGalleryImageUrl || imageVariant.images?.[0] || product.images?.[0]
+        );
+        analytics.addToCart(product.id, product.name, displayPrice, quantity);
+        toast.success('Produit ajouté au panier');
+      } else {
+        // L'image active est une image galerie — ajouter le produit de base
+        addItem(product, selectedSize, resolvedColor, quantity);
+        analytics.addToCart(product.id, product.name, displayPrice, quantity);
+        toast.success('Produit ajouté au panier');
+      }
+      return;
+    }
+
+    // Si le produit a des variantes classiques
     if (hasVariants) {
       const missingOptions = variantOptions.filter(opt => !selectedOptions[opt.id]);
       if (missingOptions.length > 0) {
         toast.error(`Veuillez sélectionner: ${missingOptions.map(o => o.name).join(', ')}`);
         return;
       }
-      
+
       if (!selectedVariant) {
         toast.error('Cette combinaison n\'est pas disponible');
         return;
       }
-      
+
       if (!selectedVariant.isAvailable || selectedVariant.stock === 0) {
         toast.error('Cette variante est en rupture de stock');
         return;
       }
-      
-      // Ajouter avec les infos de variante
+
       addItem(
-        product, 
-        null, // size (géré par la variante)
-        null, // color (géré par la variante)
+        product,
+        null,
+        resolvedColor,
         quantity,
         selectedVariant.id,
         selectedVariant.sku,
-        selectedVariant.options.map(o => ({ name: o.optionName, value: o.value }))
+        selectedVariant.options.map(o => ({ name: o.optionName, value: o.value })),
+        displayPrice,
+        activeGalleryImageUrl || selectedVariant.images?.[0] || product.images?.[0]
       );
       analytics.addToCart(product.id, product.name, displayPrice, quantity);
       toast.success('Produit ajouté au panier');
       return;
     }
-    
+
     // Logique originale pour les produits sans variantes
     const hasSizes = product.sizes && product.sizes.length > 0;
-    const hasColors = product.colors && product.colors.length > 0;
-    
+
     if (hasSizes && !selectedSize) {
       toast.error('Veuillez sélectionner une taille');
       return;
     }
-    
-    if (hasColors && !selectedColor) {
-      toast.error('Veuillez sélectionner une couleur');
-      return;
-    }
 
-    addItem(product, selectedSize, selectedColor, quantity);
+    addItem(product, selectedSize, resolvedColor, quantity);
     analytics.addToCart(product.id, product.name, displayPrice, quantity);
     toast.success('Produit ajouté au panier');
   };
@@ -199,7 +434,8 @@ export default function ProductDetail() {
             url: `https://eshopbyvalsue.mg/produit/${product.id}`,
             priceCurrency: 'MGA',
             price: displayPrice.toString(),
-            availability: product.stock > 0 ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock',
+            availability:
+              currentStock > 0 ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock',
             itemCondition: 'https://schema.org/NewCondition',
           },
           aggregateRating: {
@@ -234,13 +470,17 @@ export default function ProductDetail() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 mb-1">
         {/* Galerie */}
         <div>
-          <ProductGallery 
-            images={
-              hasVariants && selectedVariant && selectedVariant.images && selectedVariant.images.length > 0
-                ? selectedVariant.images
-                : product.images
-            } 
-            productName={product.name} 
+          <ProductGallery
+            images={galleryImages}
+            productName={product.name}
+            onImageChange={
+              galleryIndexControlled
+                ? isImageVariants
+                  ? setActiveImageIndex
+                  : handleGalleryImageChange
+                : undefined
+            }
+            selectedIndex={galleryIndexControlled ? activeImageIndex : undefined}
           />
         </div>
 
@@ -380,7 +620,36 @@ export default function ProductDetail() {
               </>
             )}
             
-            {/* Sélecteurs classiques (si pas de variantes) */}
+            {/* Info variante-image : naviguer dans la galerie pour choisir */}
+            {isImageVariants && (
+              <div className={cn(
+                'p-3 rounded-lg border',
+                imageVariant
+                  ? (imageVariantInStock ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200')
+                  : 'bg-blue-50 border-blue-200'
+              )}>
+                <p className="text-sm text-gray-800">
+                  Parcourez les images pour choisir le modèle exact que vous souhaitez.
+                  {imageVariant ? (
+                    imageVariantInStock ? (
+                      <span className="block mt-1 font-medium text-green-700">
+                        Ce modèle est disponible.
+                      </span>
+                    ) : (
+                      <span className="block mt-1 font-medium text-amber-700">
+                        Ce modèle est indisponible — commandez-le sur Duo Import.
+                      </span>
+                    )
+                  ) : (
+                    <span className="block mt-1 text-gray-500 italic">
+                      Cette image est une vue du produit.
+                    </span>
+                  )}
+                </p>
+              </div>
+            )}
+
+            {/* Sélecteur de taille (produits sans variantes uniquement) */}
             {!hasVariants && product.sizes && product.sizes.length > 0 && (
               <div>
                 <SizeSelector
@@ -395,25 +664,32 @@ export default function ProductDetail() {
                 )}
               </div>
             )}
-            {!hasVariants && product.colors && product.colors.length > 0 && (
-              <div>
-                <ColorSelector
-                  colors={product.colors}
-                  selectedColor={selectedColor}
-                  onSelectColor={setSelectedColor}
-                />
-                {selectedColor && (
-                  <p className="mt-2 text-sm text-green-600 font-medium">
-                    ✓ Couleur {selectedColor} sélectionnée
-                  </p>
-                )}
-              </div>
-            )}
-            {!hasVariants && ((product.sizes && product.sizes.length > 0) || (product.colors && product.colors.length > 0)) && (
-              <p className="text-sm text-text-dark/60 italic">
-                Les tailles et couleurs affichées sont celles disponibles.
-              </p>
-            )}
+
+            {/* Couleurs : variante sélectionnée > couleurs produit */}
+            {(() => {
+              const variantColors = selectedVariant?.colors;
+              const productColors = product.colors;
+              const colorsToShow = (variantColors && variantColors.length > 0)
+                ? variantColors
+                : (!hasVariants && productColors && productColors.length > 0)
+                  ? productColors
+                  : null;
+              if (!colorsToShow) return null;
+              return (
+                <div>
+                  <ColorSelector
+                    colors={colorsToShow}
+                    selectedColor={selectedColor}
+                    onSelectColor={setSelectedColor}
+                  />
+                  {selectedColor && (
+                    <p className="mt-2 text-sm text-green-600 font-medium">
+                      ✓ Couleur {selectedColor} sélectionnée
+                    </p>
+                  )}
+                </div>
+              );
+            })()}
             
             <QuantitySelector
               quantity={quantity}
@@ -422,17 +698,20 @@ export default function ProductDetail() {
               max={currentStock}
               stockStatus={currentStock > 0 ? 'in_stock' : 'out_of_stock'}
             />
-            {currentStock > 0 && currentStock <= 5 && (
+            {currentStock > 0 && currentStock <= 5 && !isImageVariants && (
               <div className="mt-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
                 <p className="text-sm text-yellow-800 font-medium">
                   ⚠️ Attention : Il ne reste que {currentStock} exemplaire{currentStock > 1 ? 's' : ''} en stock !
                 </p>
               </div>
             )}
-            {currentStock === 0 && (
+            {currentStock === 0 && !isImageVariants && (
               <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded-lg">
                 <p className="text-sm text-red-800 font-medium">
-                  ❌ {hasVariants && !selectedVariant ? 'Sélectionnez une variante' : 'Ce produit est actuellement en rupture de stock.'}
+                  {hasVariants && !selectedVariant
+                    ? '❌ Sélectionnez une variante'
+                    : '❌ Ce produit est actuellement en rupture de stock.'
+                  }
                 </p>
               </div>
             )}
@@ -440,15 +719,36 @@ export default function ProductDetail() {
 
           {/* Actions */}
           <div className="flex gap-4 mb-8">
-            <Button
-              variant="primary"
-              size="lg"
-              onClick={handleAddToCart}
-              className="flex-1 flex items-center justify-center gap-2"
-            >
-              <ShoppingCart size={20} />
-              Ajouter au panier
-            </Button>
+            {isImageVariants && imageVariant && imageVariantInStock === false ? (
+              <a
+                href={(() => {
+                  const imgUrl = activeGalleryImageUrl || imageVariant.images?.[0] || '';
+                  const data = JSON.stringify({
+                    img: imgUrl,
+                    qty: quantity,
+                    color: selectedColor || undefined,
+                    name: product.name,
+                  });
+                  return `https://duoimport.mg/commande-import#${btoa(encodeURIComponent(data))}`;
+                })()}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-amber-600 hover:bg-amber-700 text-white font-medium rounded-lg transition-colors text-lg"
+              >
+                <ExternalLink size={20} />
+                Commander sur Duo Import
+              </a>
+            ) : (
+              <Button
+                variant="primary"
+                size="lg"
+                onClick={handleAddToCart}
+                className="flex-1 flex items-center justify-center gap-2"
+              >
+                <ShoppingCart size={20} />
+                Ajouter au panier
+              </Button>
+            )}
             <button
               onClick={() => {
                 toggleWishlist(product);

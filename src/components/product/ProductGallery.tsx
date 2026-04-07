@@ -7,15 +7,29 @@ import { normalizeImageApiUrl } from '../../lib/imageApi';
 interface ProductGalleryProps {
   images: string[];
   productName: string;
+  onImageChange?: (index: number) => void;
+  selectedIndex?: number;
 }
 
-export function ProductGallery({ images, productName }: ProductGalleryProps) {
-  const [selectedImage, setSelectedImage] = useState(0);
+export function ProductGallery({ images, productName, onImageChange, selectedIndex }: ProductGalleryProps) {
+  const [selectedImage, setSelectedImage] = useState(selectedIndex ?? 0);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
   const touchStartX = useRef<number | null>(null);
   const touchEndX = useRef<number | null>(null);
+
+  // Sync with controlled selectedIndex prop
+  useEffect(() => {
+    if (selectedIndex !== undefined && selectedIndex !== selectedImage) {
+      setSelectedImage(selectedIndex);
+    }
+  }, [selectedIndex]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const changeImage = (index: number) => {
+    setSelectedImage(index);
+    onImageChange?.(index);
+  };
 
   const checkScrollability = () => {
     if (scrollContainerRef.current) {
@@ -61,13 +75,13 @@ export function ProductGallery({ images, productName }: ProductGalleryProps) {
   const handleThumbnailKeyDown = (e: React.KeyboardEvent, index: number) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
-      setSelectedImage(index);
+      changeImage(index);
     } else if (e.key === 'ArrowLeft' && index > 0) {
       e.preventDefault();
-      setSelectedImage(index - 1);
+      changeImage(index - 1);
     } else if (e.key === 'ArrowRight' && index < images.length - 1) {
       e.preventDefault();
-      setSelectedImage(index + 1);
+      changeImage(index + 1);
     }
   };
 
@@ -91,10 +105,10 @@ export function ProductGallery({ images, productName }: ProductGalleryProps) {
     const isRightSwipe = distance < -minSwipeDistance;
 
     if (isLeftSwipe && selectedImage < images.length - 1) {
-      setSelectedImage(selectedImage + 1);
+      changeImage(selectedImage + 1);
     }
     if (isRightSwipe && selectedImage > 0) {
-      setSelectedImage(selectedImage - 1);
+      changeImage(selectedImage - 1);
     }
   };
 
@@ -134,7 +148,7 @@ export function ProductGallery({ images, productName }: ProductGalleryProps) {
               {images.map((image, index) => (
                 <button
                   key={index}
-                  onClick={() => setSelectedImage(index)}
+                  onClick={() => changeImage(index)}
                   onKeyDown={(e) => handleThumbnailKeyDown(e, index)}
                   className={cn(
                     'aspect-square w-20 flex-shrink-0 overflow-hidden rounded-lg border-2 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-offset-2',

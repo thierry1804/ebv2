@@ -37,14 +37,29 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
     }
 
     let subscription: { unsubscribe: () => void } | null = null;
-    let isInitialized = false;
     let isMounted = true; // Flag pour éviter les updates après unmount
+    let initSettled = false;
+
+    const settleInitState = (nextUser: User | null) => {
+      if (!isMounted || initSettled) return;
+      initSettled = true;
+      setAdminUser(nextUser);
+      setIsLoading(false);
+    };
+
+    // Garde-fou global: même si Supabase reste bloqué, on ne laisse pas le spinner infini.
+    const AUTH_INIT_HARD_TIMEOUT_MS = 20_000;
+    const hardTimeoutId = window.setTimeout(() => {
+      if (!isMounted || initSettled) return;
+      console.warn('[AdminAuth] init timeout hard-limit reached');
+      settleInitState(null);
+    }, AUTH_INIT_HARD_TIMEOUT_MS);
 
     const initAuth = async () => {
       try {
         // Récupérer la session existante une seule fois au montage (avec garde-temps : certains navigateurs
         // peuvent laisser getSession() sans réponse si stockage / extensions bloquent l'accès.)
-        const SESSION_INIT_MS = 4_000;
+        const SESSION_INIT_MS = 12_000;
         let didTimeout = false;
         const { data: { session } } = await Promise.race([
           supabase.auth.getSession(),
@@ -58,22 +73,22 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
 
         // Si timeout, nettoyer l'état auth potentiellement corrompu
         if (didTimeout) {
-          try { await supabase.auth.signOut({ scope: 'local' }); } catch { /* ignore */ }
+          void supabase.auth.signOut({ scope: 'local' }).catch(() => { /* ignore */ });
         }
 
         if (isMounted) {
           // Vérifier que l'utilisateur est bien l'admin
           if (session?.user && isAdminUser(session.user)) {
-            setAdminUser(session.user);
+            settleInitState(session.user);
           } else {
-            setAdminUser(null);
+            settleInitState(null);
             // Déconnecter si l'utilisateur n'est pas admin
             if (session?.user) {
-              await supabase.auth.signOut();
+              void supabase.auth.signOut().catch((signOutErr) => {
+                console.warn('[AdminAuth] signOut non-admin:', signOutErr);
+              });
             }
           }
-          setIsLoading(false);
-          isInitialized = true;
         }
 
         // S'abonner aux changements d'authentification (login, logout, token refresh)
@@ -92,7 +107,9 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
               setAdminUser(null);
               // Déconnecter si l'utilisateur n'est pas admin
               if (session?.user && event !== 'SIGNED_OUT') {
-                await supabase.auth.signOut();
+                void supabase.auth.signOut().catch((signOutErr) => {
+                  console.warn('[AdminAuth] signOut onAuthStateChange:', signOutErr);
+                });
               }
             }
           }
@@ -101,9 +118,7 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
         subscription = authSubscription;
       } catch (error) {
         console.error('Erreur lors de l\'initialisation de l\'authentification:', error);
-        if (isMounted) {
-          setIsLoading(false);
-        }
+        settleInitState(null);
       }
     };
 
@@ -111,6 +126,7 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
 
     return () => {
       isMounted = false;
+      window.clearTimeout(hardTimeoutId);
       if (subscription) {
         subscription.unsubscribe();
       }

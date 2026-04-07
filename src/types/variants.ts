@@ -2,7 +2,7 @@
 // TYPES POUR LE SYSTÈME DE VARIANTES DE PRODUITS
 // ============================================
 
-import { Product } from './index';
+import { Product, ColorWithHex } from './index';
 
 // Option de variante (ex: "Taille", "Couleur", "Matière")
 export interface VariantOption {
@@ -35,6 +35,7 @@ export interface ProductVariant {
   weight?: number;
   isAvailable: boolean;
   images?: string[]; // Tableau d'images (comme pour les produits)
+  colors?: ColorWithHex[]; // Couleurs associées à cette variante
   position: number;
   options: SelectedVariantOption[]; // Les options sélectionnées
   createdAt: string;
@@ -107,6 +108,7 @@ export interface DatabaseProductVariant {
   weight: number | null;
   is_available: boolean;
   images: string[] | null; // Tableau d'images au lieu de image_url
+  colors: string[] | null; // Couleurs JSON sérialisées (ex: '{"name":"Marron","hex":"#8B4513"}')
   position: number;
   created_at: string;
   updated_at: string;
@@ -178,9 +180,24 @@ export function dbToVariantOptionValue(db: DatabaseVariantOptionValue): VariantO
 }
 
 export function dbToProductVariant(
-  db: DatabaseProductVariant, 
+  db: DatabaseProductVariant,
   options: SelectedVariantOption[]
 ): ProductVariant {
+  // Parser les couleurs depuis le format JSON sérialisé
+  let colors: ColorWithHex[] | undefined;
+  if (Array.isArray(db.colors) && db.colors.length > 0) {
+    colors = db.colors
+      .map((raw) => {
+        try {
+          const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+          if (parsed && parsed.name && parsed.hex) return { name: parsed.name, hex: parsed.hex };
+        } catch { /* ignore */ }
+        return null;
+      })
+      .filter((c): c is ColorWithHex => c !== null);
+    if (colors.length === 0) colors = undefined;
+  }
+
   return {
     id: db.id,
     productId: db.product_id,
@@ -193,6 +210,7 @@ export function dbToProductVariant(
     weight: db.weight || undefined,
     isAvailable: db.is_available,
     images: Array.isArray(db.images) ? db.images : (db.images ? [db.images] : undefined),
+    colors,
     position: db.position,
     options,
     createdAt: db.created_at,

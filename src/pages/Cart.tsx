@@ -7,6 +7,7 @@ import { QuantitySelector } from '../components/product/QuantitySelector';
 import toast from 'react-hot-toast';
 import { normalizeImageApiUrl } from '../lib/imageApi';
 import { useConfirm } from '../components/ui/ConfirmDialog';
+import { getColorHex, normalizeColors } from '../config/colors';
 
 export default function Cart() {
   const confirm = useConfirm();
@@ -52,7 +53,7 @@ export default function Cart() {
               >
                 <div className="absolute inset-0 bg-gradient-to-br from-neutral-support to-neutral-support/50 animate-pulse" aria-hidden="true" />
                 <img
-                  src={normalizeImageApiUrl(item.product.images[0])}
+                  src={normalizeImageApiUrl(item.variantImageUrl || item.product.images[0])}
                   alt={item.product.name}
                   className="w-full h-full object-cover relative z-10"
                   loading="lazy"
@@ -75,11 +76,26 @@ export default function Cart() {
                     {item.product.name}
                   </Link>
                   {((item.size || item.color) && (
-                    <p className="text-sm text-text-dark/80 mb-2">
-                      {item.size && `Taille: ${item.size}`}
-                      {item.size && item.color && ' • '}
-                      {item.color && `Couleur: ${item.color}`}
-                    </p>
+                    <div className="flex flex-wrap items-center gap-x-2 text-sm text-text-dark/80 mb-2">
+                      {item.size && <span>Taille: {item.size}</span>}
+                      {item.size && item.color && <span>•</span>}
+                      {item.color && (() => {
+                        const productColors = normalizeColors(item.product.colors || []);
+                        const matched = productColors.find(c => c.name === item.color);
+                        const hex = matched?.hex || getColorHex(item.color);
+                        return (
+                          <span className="inline-flex items-center gap-1.5">
+                            Couleur:
+                            <span
+                              className="inline-block w-4 h-4 rounded-full border border-gray-300 shadow-sm"
+                              style={{ backgroundColor: hex }}
+                              title={item.color}
+                            />
+                            {item.color}
+                          </span>
+                        );
+                      })()}
+                    </div>
                   ))}
                   <p className="text-lg font-semibold text-text-dark">
                     {formatPrice(item.price)}

@@ -26,9 +26,10 @@ if (!supabaseUrl || !supabaseAnonKey) {
       persistSession: true,
       detectSessionInUrl: false,
       flowType: 'pkce',
-      // Délai minimum entre les refresh (en millisecondes)
-      // Cela aide à éviter les refresh multiples simultanés
       storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+      // Désactiver navigator.locks qui peut rester bloqué (crash d'onglet, extensions)
+      // et empêcher toutes les requêtes Supabase de se résoudre.
+      lock: async (_name: string, _acquireTimeout: number, fn: () => Promise<any>) => fn(),
     },
   });
 }

@@ -1,4 +1,5 @@
 import { predefinedColors, ColorDefinition } from '../config/colors';
+import { isImageApiUrl } from '../lib/imageApi';
 
 /**
  * Extrait les couleurs dominantes d'une image et les matche
@@ -29,29 +30,56 @@ function quantize(r: number, g: number, b: number): string {
 
 /**
  * Charge une image depuis une URL et retourne les données pixel via Canvas.
- * Utilise un canvas réduit (max 100px) pour la performance.
+ * Pour les images de l'API (api.eshopbyvalsue.mg), on passe par fetch + blob
+ * pour éviter le blocage CORS du canvas.
  */
 async function getImagePixels(src: string): Promise<Uint8ClampedArray | null> {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
-      const MAX = 100;
-      const scale = Math.min(MAX / img.width, MAX / img.height, 1);
-      const w = Math.round(img.width * scale);
-      const h = Math.round(img.height * scale);
-      const canvas = document.createElement('canvas');
-      canvas.width = w;
-      canvas.height = h;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) { resolve(null); return; }
-      ctx.drawImage(img, 0, 0, w, h);
-      const { data } = ctx.getImageData(0, 0, w, h);
-      resolve(data);
-    };
-    img.onerror = () => resolve(null);
-    img.src = src;
-  });
+  try {
+    let imgSrc = src;
+
+    // Les images de l'API sont d'abord chargées par les balises <img> (sans header Origin),
+    // le navigateur peut donc cacher la réponse sans headers CORS. On ajoute un paramètre
+    // _cors pour forcer une requête séparée avec le header Origin.
+    if (isImageApiUrl(src)) {
+      const corsUrl = src + (src.includes('?') ? '&' : '?') + '_cors=1';
+      const res = await fetch(corsUrl);
+      if (!res.ok) return null;
+      const blob = await res.blob();
+      imgSrc = URL.createObjectURL(blob);
+    }
+
+    const pixels = await new Promise<Uint8ClampedArray | null>((resolve) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        const MAX = 100;
+        const scale = Math.min(MAX / img.width, MAX / img.height, 1);
+        const w = Math.round(img.width * scale);
+        const h = Math.round(img.height * scale);
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) { resolve(null); return; }
+        ctx.drawImage(img, 0, 0, w, h);
+        try {
+          const { data } = ctx.getImageData(0, 0, w, h);
+          resolve(data);
+        } catch {
+          resolve(null);
+        }
+      };
+      img.onerror = () => resolve(null);
+      img.src = imgSrc;
+    });
+
+    // Libérer le blob URL si on en a créé un
+    if (imgSrc !== src) URL.revokeObjectURL(imgSrc);
+
+    return pixels;
+  } catch {
+    return null;
+  }
 }
 
 /** Extrait les N couleurs dominantes (en RGB) d'un tableau de pixels */

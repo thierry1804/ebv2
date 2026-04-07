@@ -25,7 +25,22 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <script src="https://analytics.ahrefs.com/analytics.js" data-key="diUfSuQ8de7TNOI0jnlS1g" async></script>
+    <script>
+      // Éviter les warnings "Ignoring Event: localhost" en développement local.
+      (function () {
+        var host = window.location.hostname;
+        var isLocal =
+          host === 'localhost' ||
+          host === '127.0.0.1' ||
+          host === '::1';
+        if (isLocal) return;
+        var s = document.createElement('script');
+        s.src = 'https://analytics.ahrefs.com/analytics.js';
+        s.async = true;
+        s.setAttribute('data-key', 'diUfSuQ8de7TNOI0jnlS1g');
+        document.head.appendChild(s);
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

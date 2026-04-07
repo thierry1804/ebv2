@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useLayoutEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { 
   ProductVariant, 
@@ -11,6 +11,7 @@ import {
 } from '../types/variants';
 import toast from 'react-hot-toast';
 import { normalizeProductImageUrls } from '../lib/imageApi';
+import { ColorWithHex } from '../types/index';
 
 interface UseProductVariantsResult {
   variants: ProductVariant[];
@@ -84,6 +85,7 @@ export function useProductVariants(productId: string | null): UseProductVariants
           weight,
           is_available,
           images,
+          colors,
           position,
           created_at,
           updated_at,
@@ -143,6 +145,21 @@ export function useProductVariants(productId: string | null): UseProductVariants
             return (optA?.position ?? 0) - (optB?.position ?? 0);
           });
 
+        // Parser les couleurs
+        let colors: ColorWithHex[] | undefined;
+        if (Array.isArray(v.colors) && v.colors.length > 0) {
+          colors = v.colors
+            .map((raw: any) => {
+              try {
+                const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+                if (parsed && parsed.name && parsed.hex) return { name: parsed.name, hex: parsed.hex };
+              } catch { /* ignore */ }
+              return null;
+            })
+            .filter((c: ColorWithHex | null): c is ColorWithHex => c !== null);
+          if (colors.length === 0) colors = undefined;
+        }
+
         return {
           id: v.id,
           productId: v.product_id,
@@ -159,6 +176,7 @@ export function useProductVariants(productId: string | null): UseProductVariants
             if (raw.length === 0) return undefined;
             return normalizeProductImageUrls(raw);
           })(),
+          colors,
           position: v.position,
           options: selectedOptions,
           createdAt: v.created_at,
@@ -168,6 +186,16 @@ export function useProductVariants(productId: string | null): UseProductVariants
 
       setOptions(transformedOptions);
       setVariants(transformedVariants);
+      console.log(
+        `[useProductVariants] loadVariants · ${transformedVariants.length} variantes chargées pour ${productId}`,
+        transformedVariants.map((v) => ({
+          id: v.id.slice(0, 8),
+          price: v.price,
+          stock: v.stock,
+          isAvailable: v.isAvailable,
+          images: v.images?.map((u) => u.slice(-30)),
+        }))
+      );
     } catch (err: any) {
       console.error('Erreur lors du chargement des variantes:', err);
       setError(err.message);
@@ -214,20 +242,30 @@ export function useProductVariants(productId: string | null): UseProductVariants
     return combine(0, []);
   }, [options]);
 
-  // Trouver une variante par ses options sélectionnées
-  const findVariant = useCallback((
-    selectedOptions: Record<string, string>
-  ): ProductVariant | null => {
-    const selectedValues = Object.values(selectedOptions);
-    if (selectedValues.length === 0) return null;
+  // Trouver une variante par ses options sélectionnées (une valeur par option produit, pas Object.values)
+  const findVariant = useCallback(
+    (selectedOptions: Record<string, string>): ProductVariant | null => {
+      if (options.length === 0 || variants.length === 0) return null;
 
-    return variants.find(variant => {
-      if (variant.options.length !== selectedValues.length) return false;
-      return variant.options.every(opt => 
-        selectedOptions[opt.optionId] === opt.valueId
+      const everyOptionChosen = options.every((o) => {
+        const v = selectedOptions[o.id];
+        return typeof v === 'string' && v.length > 0;
+      });
+      if (!everyOptionChosen) return null;
+
+      return (
+        variants.find((variant) => {
+          if (variant.options.length !== options.length) return false;
+          return options.every((o) => {
+            const chosen = selectedOptions[o.id];
+            const vo = variant.options.find((x) => x.optionId === o.id);
+            return Boolean(vo && vo.valueId === chosen);
+          });
+        }) ?? null
       );
-    }) || null;
-  }, [variants]);
+    },
+    [variants, options]
+  );
 
   // Calculer le stock total
   const getTotalStock = useCallback((): number => {
@@ -514,7 +552,20 @@ export function useProductVariants(productId: string | null): UseProductVariants
     }
   }, [generateCombinations, variants, saveVariant]);
 
-  // Charger au montage
+  // Dès que le produit cible change : loading synchrone avant les useEffect suivants (évite la course avec l’admin galerie).
+  useLayoutEffect(() => {
+    if (!productId) {
+      setOptions([]);
+      setVariants([]);
+      setIsLoading(false);
+      setError(null);
+      return;
+    }
+    setIsLoading(true);
+    setError(null);
+  }, [productId]);
+
+  // Charger au montage / changement de produit
   useEffect(() => {
     if (productId) {
       loadVariants();

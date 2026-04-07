@@ -38,6 +38,32 @@ export function normalizeProductImageUrls(images: string[] | undefined | null): 
   return images.map((u) => normalizeImageApiUrl(u)).filter(Boolean);
 }
 
+/**
+ * Deux URLs désignent-elles la même ressource (normalisation API, nom de fichier /api/images/…, pathname) ?
+ * Utile pour lier les images produit aux variantes quand les chaînes diffèrent (hôte relatif/absolu, etc.).
+ */
+export function areImageUrlsSameAsset(a: string, b: string): boolean {
+  if (!a?.trim() || !b?.trim()) return false;
+  const na = normalizeImageApiUrl(a.trim());
+  const nb = normalizeImageApiUrl(b.trim());
+  if (na === nb) return true;
+  const fa = extractImageApiFilename(na);
+  const fb = extractImageApiFilename(nb);
+  if (fa && fb && fa === fb) return true;
+  try {
+    const toAbs = (s: string) =>
+      /^https?:\/\//i.test(s) ? s : baseUrl ? new URL(s, baseUrl.replace(/\/$/, '') + '/').href : s;
+    const ua = new URL(toAbs(na));
+    const ub = new URL(toAbs(nb));
+    const pa = ua.pathname.replace(/\/$/, '');
+    const pb = ub.pathname.replace(/\/$/, '');
+    if (pa === pb && ua.search === ub.search) return true;
+  } catch {
+    /* ignore */
+  }
+  return false;
+}
+
 export function isImageApiUrl(url: string): boolean {
   if (!baseUrl || !url) return false;
   try {

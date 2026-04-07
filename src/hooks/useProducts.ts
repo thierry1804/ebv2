@@ -107,6 +107,7 @@ export function useProducts() {
             isOnSale: p.is_on_sale || false,
             salePrice: p.sale_price ? parseFloat(p.sale_price) : undefined,
             brand: p.brand || undefined,
+            hasVariants: Boolean(p.has_variants),
           };
         });
         setProducts(adaptedProducts);

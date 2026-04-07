@@ -1,7 +1,7 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Product } from '../../types';
-import { Plus, Edit, Trash2, Upload, X, Check, Package, Layers, ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
+import { Plus, Edit, Trash2, Upload, X, Check, Package, Layers, ChevronDown, ChevronUp, Loader2, Image as ImageIcon, FolderOpen, Pipette } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import toast from 'react-hot-toast';
 import { Offcanvas } from '../../components/ui/Offcanvas';
@@ -18,6 +18,7 @@ import {
   deleteImageFromImageApi,
   normalizeImageApiUrl,
   normalizeProductImageUrls,
+  areImageUrlsSameAsset,
 } from '../../lib/imageApi';
 import { useAdminAuth } from '../../context/AdminAuthContext';
 import { useProductVariants } from '../../hooks/useProductVariants';
@@ -48,6 +49,53 @@ function isAbortError(e: unknown): boolean {
 }
 
 const ADMIN_LOG = '[AdminProducts]';
+const ADMIN_PRODUCTS_TIMEOUT_MS = 25000;
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  let timeoutId: number | undefined;
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => {
+      timeoutId = window.setTimeout(() => {
+        reject(new Error(`${label} timeout`));
+      }, timeoutMs);
+    }),
+  ]).finally(() => {
+    if (timeoutId) {
+      window.clearTimeout(timeoutId);
+    }
+  });
+}
+
+/** Associe chaque image produit à une variante (URL souple puis file d’attente par position). */
+function matchVariantsToProductImageUrls(
+  productImages: string[],
+  variants: ProductVariant[]
+): Array<{ url: string; index: number; variant: ProductVariant | null }> {
+  if (productImages.length === 0 || variants.length === 0) {
+    return productImages.map((url, index) => ({ url, index, variant: null }));
+  }
+  const sorted = [...variants].sort((a, b) => a.position - b.position);
+  const used = new Set<string>();
+  const rows = productImages.map((url, index) => {
+    const variant =
+      sorted.find(
+        (v) =>
+          !used.has(v.id) &&
+          Boolean(v.images?.some((img) => areImageUrlsSameAsset(img, url)))
+      ) ?? null;
+    if (variant) used.add(variant.id);
+    return { url, index, variant };
+  });
+  const unused = sorted.filter((v) => !used.has(v.id));
+  let u = 0;
+  for (const row of rows) {
+    if (row.variant) continue;
+    const next = unused[u++];
+    if (next) row.variant = next;
+  }
+  return rows;
+}
 
 /** `true` : la zone « Ou ajouter une URL » reste dans le DOM mais masquée (`hidden`). Mettre à `false` pour l’afficher. */
 const HIDE_MANUAL_IMAGE_URL_FIELD = true;
@@ -88,12 +136,71 @@ function logPostgrestLikeError(label: string, error: unknown) {
   });
 }
 
+/** Prix saisi par image (galerie) : vide → null (prix de base). Gère espaces, milliers (10,000 / 10.000) et décimales (10,5 / 1.234,56). */
+function parseOptionalGalleryVariantPrice(raw: string | undefined | null): number | null {
+  if (raw == null) return null;
+  let s = String(raw).trim().replace(/\s/g, '');
+  if (s === '') return null;
+  // Milliers style US : 10,000 ou 1,234,567
+  if (/^\d{1,3}(,\d{3})+$/.test(s)) {
+    s = s.replace(/,/g, '');
+  }
+  // Milliers style EU (sans décimale) : 10.000
+  else if (/^\d{1,3}(\.\d{3})+$/.test(s) && !s.includes(',')) {
+    s = s.replace(/\./g, '');
+  }
+  // Décimale avec virgule (ex. 10,5 ou 1.234,56)
+  else if (/,/.test(s) && /^\d[\d.]*,\d+$/.test(s)) {
+    s = s.replace(/\./g, '').replace(',', '.');
+  } else {
+    s = s.replace(',', '.');
+  }
+  const n = parseFloat(s);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** PostgREST peut renvoyer `images` en TEXT[], en JSON string, ou une seule URL dans `image`. */
+function parseProductImagesFromDb(imagesRaw: unknown, legacyImage?: string | null): string[] {
+  const out: string[] = [];
+  if (imagesRaw != null) {
+    if (Array.isArray(imagesRaw)) {
+      for (const x of imagesRaw) {
+        if (typeof x === 'string' && x.trim()) out.push(x.trim());
+      }
+    } else if (typeof imagesRaw === 'string') {
+      const s = imagesRaw.trim();
+      if (!s) {
+        /* skip */
+      } else if (s.startsWith('[')) {
+        try {
+          const parsed = JSON.parse(s) as unknown;
+          if (Array.isArray(parsed)) {
+            for (const x of parsed) {
+              if (typeof x === 'string' && x.trim()) out.push(x.trim());
+            }
+          }
+        } catch {
+          out.push(s);
+        }
+      } else {
+        out.push(s);
+      }
+    }
+  }
+  if (out.length === 0 && legacyImage && typeof legacyImage === 'string' && legacyImage.trim()) {
+    out.push(legacyImage.trim());
+  }
+  return out;
+}
+
 export default function AdminProducts() {
   const confirm = useConfirm();
   const { adminUser } = useAdminAuth();
   const { categories } = useCategories();
+  const hasLoadedProductsRef = useRef(false);
   const [products, setProducts] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [isOffcanvasOpen, setIsOffcanvasOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [formData, setFormData] = useState({
@@ -151,9 +258,53 @@ export default function AdminProducts() {
   });
   const [isUploadingVariantImages, setIsUploadingVariantImages] = useState(false);
   const variantFileInputRef = useRef<HTMLInputElement>(null);
+
+  // ── États pour la sélection d'images depuis la galerie ──
+  interface GalleryImageSelection {
+    id: string;
+    image_url: string;
+    title: string | null;
+    isVariant: boolean; // true = variante achetable, false = image galerie seulement
+    inStock: boolean;
+    price: string; // vide = prix du produit
+    colors: Array<{ name: string; hex: string }>; // couleurs détectées pour cette image
+  }
+  interface GalleryFolder {
+    id: string;
+    name: string;
+  }
+  interface GalleryImageItem {
+    id: string;
+    title: string | null;
+    image_url: string;
+    folder_id: string | null;
+    display_order: number;
+  }
+  const [isGalleryPickerOpen, setIsGalleryPickerOpen] = useState(false);
+  const [galleryFolders, setGalleryFolders] = useState<GalleryFolder[]>([]);
+  const [galleryImages, setGalleryImages] = useState<GalleryImageItem[]>([]);
+  const [galleryCurrentFolder, setGalleryCurrentFolder] = useState<string | null>(null);
+  const [isLoadingGallery, setIsLoadingGallery] = useState(false);
+  /** Incrémenté à la fermeture du modal et au début de chaque chargement — ignore les réponses obsolètes */
+  const galleryLoadGenRef = useRef(0);
+  const [selectedGalleryImages, setSelectedGalleryImages] = useState<GalleryImageSelection[]>([]);
+  /** Ref toujours synchronisée avec le state selectedGalleryImages — lecture sûre dans les closures async */
+  const selectedGalleryImagesRef = useRef<GalleryImageSelection[]>([]);
+  /** Index de la variante dont le sélecteur de couleur est ouvert (-1 = fermé) */
+  const [variantColorPickerOpen, setVariantColorPickerOpen] = useState(-1);
+  /** Couleur personnalisée en cours de saisie pour une variante */
+  const [variantCustomColor, setVariantCustomColor] = useState({ name: '', hex: '#888888' });
+  selectedGalleryImagesRef.current = selectedGalleryImages;
+
   const saveAbortRef = useRef<AbortController | null>(null);
   /** Garde synchrone : évite deux sauvegardes concurrentes (setState isSaving est asynchrone) */
   const saveInProgressRef = useRef(false);
+  /** Clé produit + ids variantes : re-sync quand les variantes arrivent après le premier rendu */
+  const gallerySyncedKeyRef = useRef<string | null>(null);
+  /** Empêche le useEffect de ré-écraser les modifications galerie faites par l'utilisateur */
+  const galleryUserEditedRef = useRef(false);
+  /** Une fois par session d’édition : corrige hasVariants si la BDD contient des variantes mais has_variants est resté à false */
+  const autoEnableVariantsFromApiRef = useRef(false);
   const nameFieldRef = useRef<HTMLInputElement>(null);
   const categoryFieldRef = useRef<HTMLSelectElement>(null);
   const priceFieldRef = useRef<HTMLInputElement>(null);
@@ -175,10 +326,11 @@ export default function AdminProducts() {
   };
 
   // Hook pour les variantes
-  const { 
-    variants, 
-    options: variantOptions, 
+  const {
+    variants,
+    options: variantOptions,
     isLoading: isLoadingVariants,
+    loadVariants,
     saveOption,
     deleteOption,
     saveVariant,
@@ -202,7 +354,8 @@ export default function AdminProducts() {
     if (formData.price.trim() === '' || Number.isNaN(priceNum) || priceNum < 0) {
       errors.price = 'Indiquez un prix valide (nombre positif ou 0).';
     }
-    if (!formData.hasVariants) {
+    const hasGalleryVariantsForValidation = selectedGalleryImages.some(s => s.isVariant);
+    if (!formData.hasVariants && !hasGalleryVariantsForValidation) {
       const stockRaw = formData.stock.trim();
       if (stockRaw === '') {
         errors.stock = 'Indiquez le stock (nombre entier, ex. 0 si vide en rayon).';
@@ -267,6 +420,8 @@ export default function AdminProducts() {
   const predefinedColors = sharedPredefinedColors;
 
   useEffect(() => {
+    if (hasLoadedProductsRef.current) return;
+    hasLoadedProductsRef.current = true;
     // Charger les produits une seule fois au montage
     loadProducts();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -280,10 +435,15 @@ export default function AdminProducts() {
     });
 
     try {
-      const { data, error } = await supabase
-        .from('products')
-        .select('*')
-        .order('created_at', { ascending: false });
+      setLoadError(null);
+      const { data, error } = await withTimeout(
+        supabase
+          .from('products')
+          .select('*')
+          .order('created_at', { ascending: false }),
+        ADMIN_PRODUCTS_TIMEOUT_MS,
+        'products list',
+      );
 
       if (error) {
         logPostgrestLikeError('loadProducts · erreur Supabase', error);
@@ -338,7 +498,7 @@ export default function AdminProducts() {
             category: p.category,
             price: p.price,
             images: normalizeProductImageUrls(
-              Array.isArray(p.images) ? p.images : [p.image || '']
+              parseProductImagesFromDb(p.images, p.image)
             ).filter(Boolean),
             sizes: Array.isArray(p.sizes) ? p.sizes : [],
             colors: colors,
@@ -360,6 +520,14 @@ export default function AdminProducts() {
       }
     } catch (error: any) {
       logPostgrestLikeError('loadProducts · exception', error);
+      if (String(error?.message || '').includes('products list timeout')) {
+        console.warn(`${ADMIN_LOG} loadProducts · timeout`, {
+          timeoutMs: ADMIN_PRODUCTS_TIMEOUT_MS,
+        });
+        setLoadError('Connexion Supabase lente (timeout). Vérifiez votre réseau puis réessayez.');
+      } else {
+        setLoadError('Erreur lors du chargement des produits.');
+      }
       toast.error('Erreur lors du chargement des produits');
     } finally {
       setIsLoading(false);
@@ -390,6 +558,10 @@ export default function AdminProducts() {
     setCustomColorHexInput('#1abc9c');
     setCustomColorName('');
     setIsVariantsSectionOpen(false);
+    setSelectedGalleryImages([]);
+    gallerySyncedKeyRef.current = null;
+    galleryUserEditedRef.current = false;
+    autoEnableVariantsFromApiRef.current = false;
     setIsOffcanvasOpen(true);
   };
 
@@ -470,8 +642,104 @@ export default function AdminProducts() {
     setCustomColorHexInput('#1abc9c');
     setCustomColorName('');
     setIsVariantsSectionOpen(product.hasVariants || false);
+    gallerySyncedKeyRef.current = null;
+    galleryUserEditedRef.current = false;
+    autoEnableVariantsFromApiRef.current = false;
+    const imgs = product.images || [];
+    setSelectedGalleryImages(
+      imgs.map((url, i) => ({
+        id: `img-${i}`,
+        image_url: url,
+        title: null,
+        isVariant: false,
+        inStock: true,
+        price: '',
+        colors: [],
+      }))
+    );
     setIsOffcanvasOpen(true);
   };
+
+  // Si le produit a des options / variantes en BDD mais has_variants est false (données héritées ou incohérentes), aligner le formulaire
+  useEffect(() => {
+    if (!editingProduct || isLoadingVariants) return;
+    const variantsBelongToProduct =
+      variants.length === 0 || variants[0]?.productId === editingProduct.id;
+    if (!variantsBelongToProduct) return;
+
+    const hasVariantInfrastructure =
+      variantOptions.length > 0 || variants.length > 0;
+    if (!hasVariantInfrastructure || autoEnableVariantsFromApiRef.current) return;
+
+    autoEnableVariantsFromApiRef.current = true;
+    setFormData((prev) =>
+      prev.hasVariants ? prev : { ...prev, hasVariants: true }
+    );
+    setIsVariantsSectionOpen(true);
+  }, [
+    editingProduct?.id,
+    isLoadingVariants,
+    variants,
+    variantOptions,
+  ]);
+
+  // Quand les variantes sont chargées et qu'on édite un produit, pré-remplir les images galerie
+  useEffect(() => {
+    if (!editingProduct) {
+      gallerySyncedKeyRef.current = null;
+      return;
+    }
+    // Même id qu’avant fermeture : sans ce garde, l’effet ne se relance pas après handleEdit (deps inchangées).
+    if (!isOffcanvasOpen) return;
+    if (isLoadingVariants) {
+      gallerySyncedKeyRef.current = null;
+      return;
+    }
+    // Vérifier que les variants chargées correspondent bien au produit en édition
+    // (évite d'utiliser les variants d'un ancien produit pendant la transition)
+    const variantsBelongToProduct = variants.length === 0 || variants[0]?.productId === editingProduct.id;
+    if (!variantsBelongToProduct) return;
+
+    const variantSig =
+      variants.length === 0 ? '∅' : [...variants].map((v) => v.id).sort().join('|');
+    const syncKey = `${editingProduct.id}:${variantSig}`;
+    if (gallerySyncedKeyRef.current === syncKey) return;
+    // Si l'utilisateur a déjà modifié manuellement les images galerie, ne pas écraser
+    if (galleryUserEditedRef.current && gallerySyncedKeyRef.current) return;
+    gallerySyncedKeyRef.current = syncKey;
+    galleryUserEditedRef.current = false;
+
+    const productImages = editingProduct.images || [];
+    if (productImages.length > 0) {
+      const matched = matchVariantsToProductImageUrls(productImages, variants);
+      const gallerySelections: GalleryImageSelection[] = matched.map(
+        ({ url, index, variant: matchingVariant }) => ({
+          id: matchingVariant?.id || `img-${index}`,
+          image_url: url,
+          title: null,
+          isVariant: Boolean(matchingVariant),
+          inStock: matchingVariant
+            ? matchingVariant.isAvailable && matchingVariant.stock > 0
+            : true,
+          price: matchingVariant?.price?.toString() || '',
+          colors: matchingVariant?.colors?.map(c => ({ name: c.name, hex: c.hex })) || [],
+        })
+      );
+      console.log(
+        `${ADMIN_LOG} gallery init · ${gallerySelections.length} images, ${gallerySelections.filter(s => s.isVariant).length} variantes`,
+        gallerySelections.map((s, i) => ({
+          idx: i,
+          isVariant: s.isVariant,
+          price: s.price || '(vide)',
+          inStock: s.inStock,
+          url: s.image_url.slice(-30),
+        }))
+      );
+      setSelectedGalleryImages(gallerySelections);
+    } else {
+      setSelectedGalleryImages([]);
+    }
+  }, [isOffcanvasOpen, editingProduct?.id, variants, isLoadingVariants]); // eslint-disable-line react-hooks/exhaustive-deps
 
 
   const toggleColor = (color: { name: string; hex: string; dark: boolean }) => {
@@ -783,6 +1051,171 @@ export default function AdminProducts() {
     }
   };
 
+  // ── Charger les dossiers et images de la galerie (même requête que AdminGallery) ──
+  const loadGalleryData = useCallback(async () => {
+    const gen = ++galleryLoadGenRef.current;
+    setIsLoadingGallery(true);
+    console.log(`${ADMIN_LOG} loadGalleryData · début gen=${gen}`);
+    try {
+      const foldersRes = await supabase.from('gallery_folders').select('id, name').order('name');
+      if (gen !== galleryLoadGenRef.current) return;
+      if (foldersRes.error) {
+        console.error(`${ADMIN_LOG} loadGalleryData · folders`, foldersRes.error);
+        toast.error(foldersRes.error.message || 'Impossible de charger les dossiers galerie');
+        setGalleryFolders([]);
+      } else {
+        setGalleryFolders(foldersRes.data || []);
+        console.log(`${ADMIN_LOG} loadGalleryData · folders OK`, { count: foldersRes.data?.length });
+      }
+
+      const imagesRes = await supabase
+        .from('gallery')
+        .select('*')
+        .order('display_order', { ascending: true })
+        .order('created_at', { ascending: false });
+
+      if (gen !== galleryLoadGenRef.current) return;
+
+      if (imagesRes.error) {
+        console.error(`${ADMIN_LOG} loadGalleryData · images`, imagesRes.error);
+        toast.error(imagesRes.error.message || 'Impossible de charger les images galerie');
+        setGalleryImages([]);
+      } else {
+        setGalleryImages(
+          (imagesRes.data || []).map((img: Record<string, unknown>) => ({
+            id: String(img.id),
+            title: (img.title as string | null) ?? null,
+            image_url: normalizeImageApiUrl(String(img.image_url ?? '')),
+            folder_id: (img.folder_id as string | null) ?? null,
+            display_order: typeof img.display_order === 'number' ? img.display_order : 0,
+          }))
+        );
+        console.log(`${ADMIN_LOG} loadGalleryData · images OK`, { count: imagesRes.data?.length });
+      }
+    } catch (err) {
+      if (gen !== galleryLoadGenRef.current) return;
+      console.error(`${ADMIN_LOG} loadGalleryData · erreur`, err);
+      toast.error('Erreur lors du chargement de la galerie');
+    } finally {
+      if (gen === galleryLoadGenRef.current) {
+        setIsLoadingGallery(false);
+        console.log(`${ADMIN_LOG} loadGalleryData · terminé gen=${gen}`);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isGalleryPickerOpen) {
+      galleryLoadGenRef.current += 1;
+      setIsLoadingGallery(false);
+      return;
+    }
+    void loadGalleryData();
+  }, [isGalleryPickerOpen, loadGalleryData]);
+
+  const openGalleryPicker = () => {
+    setGalleryCurrentFolder(null);
+    setIsGalleryPickerOpen(true);
+  };
+
+  const toggleGalleryImageSelection = (img: GalleryImageItem) => {
+    setSelectedGalleryImages(prev => {
+      const exists = prev.find(s => s.id === img.id);
+      if (exists) {
+        return prev.filter(s => s.id !== img.id);
+      }
+      return [...prev, {
+        id: img.id,
+        image_url: img.image_url,
+        title: img.title,
+        isVariant: false,
+        inStock: true,
+        price: '',
+        colors: [],
+      }];
+    });
+  };
+
+  // ── Sauvegarder les variantes-images après création/modification du produit ──
+  const saveGalleryImageVariants = async (productId: string) => {
+    // Lecture depuis la ref pour éviter toute closure périmée
+    const currentGalleryImages = selectedGalleryImagesRef.current;
+    const variantImages = currentGalleryImages.filter(s => s.isVariant);
+    if (variantImages.length === 0) return;
+
+    console.log(
+      `${ADMIN_LOG} saveGalleryImageVariants · début`,
+      variantImages.map((s, i) => ({ i, price: s.price, inStock: s.inStock, url: s.image_url.slice(-30) }))
+    );
+
+    const { data: existingVariants, error: listErr } = await supabase
+      .from('product_variants')
+      .select('id')
+      .eq('product_id', productId);
+
+    if (listErr) {
+      console.error(`${ADMIN_LOG} saveGalleryImageVariants · liste variantes`, listErr);
+      throw new Error(listErr.message || 'Impossible de lire les variantes');
+    }
+
+    if (existingVariants && existingVariants.length > 0) {
+      for (const v of existingVariants) {
+        const { error: pvoErr } = await supabase
+          .from('product_variant_options')
+          .delete()
+          .eq('variant_id', v.id);
+        if (pvoErr) {
+          console.error(`${ADMIN_LOG} saveGalleryImageVariants · delete pvo`, pvoErr);
+          throw new Error(pvoErr.message || 'Erreur suppression liaisons variante');
+        }
+      }
+      const { error: delVarErr } = await supabase
+        .from('product_variants')
+        .delete()
+        .eq('product_id', productId);
+      if (delVarErr) {
+        console.error(`${ADMIN_LOG} saveGalleryImageVariants · delete variants`, delVarErr);
+        throw new Error(delVarErr.message || 'Erreur suppression variantes');
+      }
+    }
+
+    for (let galleryIndex = 0; galleryIndex < currentGalleryImages.length; galleryIndex++) {
+      const sel = currentGalleryImages[galleryIndex];
+      if (!sel.isVariant) continue;
+      const priceVal = parseOptionalGalleryVariantPrice(sel.price);
+      const colorsJson = sel.colors.map(c => JSON.stringify({ name: c.name, hex: c.hex }));
+      const variantPayload = {
+        product_id: productId,
+        sku: null,
+        price: priceVal,
+        compare_at_price: null,
+        cost_price: null,
+        // Variantes "par image" : booléen de disponibilité uniquement.
+        // On met une valeur haute pour ne pas bloquer la quantité à 1 côté boutique.
+        stock: sel.inStock ? 999 : 0,
+        weight: null,
+        is_available: sel.inStock,
+        images: [sel.image_url],
+        colors: colorsJson,
+        position: galleryIndex,
+      };
+      console.log(`${ADMIN_LOG} saveGalleryImageVariants · insert idx=${galleryIndex}`, { priceRaw: sel.price, priceParsed: priceVal, inStock: sel.inStock, colors: sel.colors.length });
+      const { error: insErr } = await supabase.from('product_variants').insert(variantPayload);
+      if (insErr) {
+        console.error(`${ADMIN_LOG} saveGalleryImageVariants · insert`, insErr);
+        throw new Error(insErr.message || 'Erreur création variante image');
+      }
+    }
+    console.log(
+      `${ADMIN_LOG} saveGalleryImageVariants · résumé`,
+      currentGalleryImages.map((s, i) =>
+        s.isVariant
+          ? { galleryIndex: i, price: parseOptionalGalleryVariantPrice(s.price), inStock: s.inStock }
+          : null
+      ).filter(Boolean)
+    );
+  };
+
   const handleSave = async () => {
     setFieldErrors({});
     const validationErrors = getProductFormErrors();
@@ -795,9 +1228,10 @@ export default function AdminProducts() {
     }
 
     const priceNum = parseFloat(formData.price);
-    const stockInt = formData.hasVariants
+    const hasGalleryVariantsSave = selectedGalleryImagesRef.current.some(s => s.isVariant);
+    const stockInt = (formData.hasVariants || hasGalleryVariantsSave)
       ? 0
-      : parseInt(formData.stock.trim(), 10);
+      : parseInt(formData.stock.trim() || '0', 10);
 
     if (saveInProgressRef.current) {
       console.warn(`${ADMIN_LOG} save · ignoré — une sauvegarde est déjà en cours (garde synchrone)`);
@@ -852,7 +1286,13 @@ export default function AdminProducts() {
               hex: predefined ? predefined.hex : '#CCCCCC'
             });
           }).filter(Boolean);
-      const imagesArray = formData.images;
+      // Si des images galerie sont sélectionnées, les utiliser comme images du produit
+      const gallerySnap = selectedGalleryImagesRef.current;
+      const hasGallerySelections = gallerySnap.length > 0;
+      const hasGalleryVariants = gallerySnap.some(s => s.isVariant);
+      const imagesArray = hasGallerySelections
+        ? gallerySnap.map(s => s.image_url)
+        : formData.images;
 
       const productData = {
         name: formData.name,
@@ -871,7 +1311,7 @@ export default function AdminProducts() {
             ? parseFloat(formData.salePrice)
             : null,
         brand: formData.brand || null,
-        has_variants: formData.hasVariants,
+        has_variants: hasGalleryVariants ? true : formData.hasVariants,
       };
 
       console.log(`${ADMIN_LOG} save · payload (résumé)`, {
@@ -890,6 +1330,8 @@ export default function AdminProducts() {
       const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
       const { data: { session: currentSession } } = await supabase.auth.getSession();
       const accessToken = currentSession?.access_token || supabaseAnonKey;
+
+      let savedProductId = editingProduct?.id || '';
 
       if (editingProduct) {
         console.log(`${ADMIN_LOG} save · requête PATCH products`, { id: editingProduct.id });
@@ -915,6 +1357,7 @@ export default function AdminProducts() {
         toast.success('Produit modifié avec succès');
       } else {
         const clientId = crypto.randomUUID();
+        savedProductId = clientId;
         console.log(`${ADMIN_LOG} save · requête POST products (id client: ${clientId})`);
         const postRes = await fetch(`${supabaseUrl}/rest/v1/products`, {
           method: 'POST',
@@ -956,6 +1399,15 @@ export default function AdminProducts() {
         setEditingProduct(newProduct);
 
         toast.success('Produit créé avec succès');
+      }
+
+      // Sauvegarder les variantes-images depuis la galerie (seulement s'il y a des images marquées variante)
+      if (hasGalleryVariants) {
+        await saveGalleryImageVariants(savedProductId);
+        galleryUserEditedRef.current = false;
+        gallerySyncedKeyRef.current = null; // permettre au useEffect de re-synchroniser après la sauvegarde
+        console.log(`${ADMIN_LOG} save · variantes-images galerie sauvegardées — rechargement hook`);
+        await loadVariants(); // forcer le hook à relire les variantes fraîches depuis la BDD
       }
 
       setSaveStep('reload');
@@ -1151,7 +1603,7 @@ export default function AdminProducts() {
             {products.length === 0 ? (
               <tr>
                 <td colSpan={7} className="px-6 py-8 text-center text-gray-500">
-                  Aucun produit trouvé. Créez une table "products" dans Supabase.
+                  {loadError ?? 'Aucun produit trouvé.'}
                 </td>
               </tr>
             ) : (
@@ -1444,7 +1896,7 @@ export default function AdminProducts() {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="admin-product-stock">
-                Stock{formData.hasVariants ? ' (variantes)' : ''}
+                Stock{(formData.hasVariants || selectedGalleryImages.some(s => s.isVariant)) ? ' (variantes)' : ''}
               </label>
               <input
                 ref={stockFieldRef}
@@ -1457,13 +1909,13 @@ export default function AdminProducts() {
                   setFormData({ ...formData, stock: e.target.value });
                   clearFieldError('stock');
                 }}
-                disabled={formData.hasVariants}
+                disabled={formData.hasVariants || selectedGalleryImages.some(s => s.isVariant)}
                 aria-invalid={Boolean(fieldErrors.stock)}
                 aria-describedby={fieldErrors.stock ? 'admin-product-stock-error' : undefined}
                 className={cn(
                   'w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-secondary',
                   fieldErrors.stock ? 'border-red-600' : 'border-gray-300',
-                  formData.hasVariants && 'bg-gray-100 text-gray-600 cursor-not-allowed'
+                  (formData.hasVariants || selectedGalleryImages.some(s => s.isVariant)) && 'bg-gray-100 text-gray-600 cursor-not-allowed'
                 )}
               />
               {fieldErrors.stock && (
@@ -1778,99 +2230,326 @@ export default function AdminProducts() {
               </Modal>
             </div>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Images</label>
-            
-            {/* Upload de fichiers */}
-            <div className="mb-3">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                multiple
-                onChange={handleFileSelect}
-                className="hidden"
-                id="images-upload"
-              />
-              <label
-                htmlFor="images-upload"
-                className={`inline-flex items-center gap-2 px-4 py-2 bg-gray-100 rounded-lg transition-colors ${
-                  isUploading
-                    ? 'cursor-wait opacity-80 pointer-events-none'
-                    : 'hover:bg-gray-200 cursor-pointer'
-                }`}
-              >
-                {isUploading ? (
-                  <Loader2 className="animate-spin shrink-0" size={18} aria-hidden />
-                ) : (
-                  <Upload size={18} aria-hidden />
-                )}
-                {isUploading ? 'Traitement des images…' : 'Uploader des images'}
+          {/* ── Sélection d'images depuis la galerie ── */}
+          <div className="min-w-0">
+            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-3">
+              <label className="block text-sm font-medium text-gray-700 sm:mb-0">
+                Images du produit
               </label>
+              <Button
+                type="button"
+                onClick={openGalleryPicker}
+                className="inline-flex w-full items-center justify-center gap-2 bg-secondary hover:bg-secondary/90 text-white px-5 py-2.5 text-sm font-medium rounded-lg shadow-sm sm:w-auto sm:shrink-0"
+              >
+                <ImageIcon size={18} aria-hidden />
+                Sélectionner depuis la galerie
+              </Button>
             </div>
+            {formData.hasVariants && editingProduct && selectedGalleryImages.length === 0 && (
+              <p className="mt-2 text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                Aucune image sur ce produit pour l’instant. Ouvrez la galerie pour en ajouter ; c’est là que
+                vous définissez aussi les variantes « par photo » (stock et prix).
+              </p>
+            )}
 
-            {/* URLs manuelles — masquées visuellement si HIDE_MANUAL_IMAGE_URL_FIELD */}
-            <div
-              className={cn('mb-2', HIDE_MANUAL_IMAGE_URL_FIELD && 'hidden')}
-              aria-hidden={HIDE_MANUAL_IMAGE_URL_FIELD}
-            >
-              <label className="block text-xs text-gray-600 mb-1">Ou ajouter une URL</label>
-              <div className="flex flex-col sm:flex-row gap-2">
-                <input
-                  id="admin-product-manual-image-url"
-                  type="text"
-                  placeholder="https://images.unsplash.com/..."
-                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-secondary"
-                  onKeyPress={(e) => {
-                    if (e.key === 'Enter') {
-                      const input = e.target as HTMLInputElement;
-                      if (input.value.trim()) {
-                        setFormData({ ...formData, images: [...formData.images, input.value.trim()] });
-                        input.value = '';
-                      }
-                    }
-                  }}
-                />
-                <Button
-                  type="button"
-                  onClick={() => {
-                    const input = document.getElementById(
-                      'admin-product-manual-image-url'
-                    ) as HTMLInputElement | null;
-                    if (input?.value.trim()) {
-                      setFormData({ ...formData, images: [...formData.images, input.value.trim()] });
-                      input.value = '';
-                    }
-                  }}
-                  className="bg-gray-200 hover:bg-gray-300 text-gray-800 w-full sm:w-auto"
-                >
-                  Ajouter
-                </Button>
-              </div>
-            </div>
-
-            {/* Liste des images */}
-            {formData.images.length > 0 && (
-              <div className="mt-4">
-                <label className="block text-xs text-gray-600 mb-2">Images ajoutées ({formData.images.length})</label>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                  {formData.images.map((image, index) => (
-                    <div key={index} className="relative group">
-                      <img
-                        src={image}
-                        alt={`Image ${index + 1}`}
-                        className="w-full h-32 object-cover rounded-lg border border-gray-200"
-                        onError={(e) => {
-                          (e.target as HTMLImageElement).style.display = 'none';
-                        }}
-                      />
+            {/* Images sélectionnées avec contrôles stock / prix */}
+            {selectedGalleryImages.length > 0 && (
+              <div className="mt-4 space-y-3">
+                <label className="block text-xs text-gray-600 leading-relaxed">
+                  Images sélectionnées ({selectedGalleryImages.length}). Cochez « Variante (achetable) » pour
+                  chaque modèle en vente (stock / prix) ; laissez « Galerie seulement » pour une simple vue.
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {selectedGalleryImages.map((sel, index) => (
+                    <div
+                      key={sel.id}
+                      className={cn(
+                        'relative flex h-full min-w-0 flex-row items-stretch gap-3 rounded-lg border py-3 pl-3 pr-10 pt-11 sm:pt-3',
+                        sel.isVariant ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-200'
+                      )}
+                    >
                       <button
-                        onClick={() => handleRemoveImage(index)}
-                        className="absolute top-2 right-2 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                        title="Supprimer"
+                        type="button"
+                        onClick={() => {
+                          galleryUserEditedRef.current = true;
+                          setSelectedGalleryImages(prev => prev.filter((_, i) => i !== index));
+                        }}
+                        className="absolute right-2 top-2 rounded p-1.5 text-red-500 hover:bg-white/80 hover:text-red-700"
+                        title="Retirer"
                       >
-                        <X size={16} />
+                        <X size={18} />
                       </button>
+                      <div className="relative w-[10rem] min-h-[5rem] shrink-0 self-stretch overflow-hidden rounded-lg border border-gray-300 bg-gray-100">
+                        <img
+                          src={sel.image_url}
+                          alt={sel.title || `Image ${index + 1}`}
+                          className="absolute inset-0 h-full w-full object-cover"
+                        />
+                      </div>
+                      <div className="min-w-0 flex-1 space-y-2">
+                        <p className="text-sm font-medium text-gray-700 break-words">
+                          {sel.title || `Image ${index + 1}`}
+                        </p>
+                        {/* Toggle : variante achetable ou image galerie */}
+                        <div className="flex flex-wrap items-center gap-2">
+                          <label className="flex min-w-0 cursor-pointer items-start gap-2 text-sm">
+                            <input
+                              type="checkbox"
+                              checked={sel.isVariant}
+                              onChange={(e) => {
+                                galleryUserEditedRef.current = true;
+                                setSelectedGalleryImages(prev =>
+                                  prev.map((s, i) => (i === index ? { ...s, isVariant: e.target.checked } : s))
+                                );
+                              }}
+                              className="mt-0.5 h-4 w-4 shrink-0 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                            />
+                            <span
+                              className={cn(
+                                'min-w-0 leading-snug',
+                                sel.isVariant ? 'font-medium text-blue-700' : 'text-gray-500'
+                              )}
+                            >
+                              {sel.isVariant ? 'Variante (achetable)' : 'Galerie seulement'}
+                            </span>
+                          </label>
+                        </div>
+                        {/* Stock et prix — uniquement pour les variantes */}
+                        {sel.isVariant && (
+                          <div className="flex flex-col gap-2">
+                            <label className="flex w-fit max-w-full cursor-pointer items-center gap-2 text-sm">
+                              <input
+                                type="checkbox"
+                                checked={sel.inStock}
+                                onChange={(e) => {
+                                  galleryUserEditedRef.current = true;
+                                  setSelectedGalleryImages(prev =>
+                                    prev.map((s, i) => (i === index ? { ...s, inStock: e.target.checked } : s))
+                                  );
+                                }}
+                                className="h-4 w-4 shrink-0 rounded border-gray-300 text-green-600 focus:ring-green-500"
+                              />
+                              <span className={sel.inStock ? 'text-green-700' : 'text-red-600'}>
+                                {sel.inStock ? 'En stock' : 'Hors stock'}
+                              </span>
+                            </label>
+                            <div className="flex min-w-0 flex-col gap-1">
+                              <label className="shrink-0 text-xs text-gray-500">Prix :</label>
+                              <input
+                                type="text"
+                                inputMode="numeric"
+                                value={sel.price}
+                                onChange={(e) => {
+                                  const val = e.target.value.replace(/[^0-9.,\s]/g, '');
+                                  galleryUserEditedRef.current = true;
+                                  setSelectedGalleryImages(prev =>
+                                    prev.map((s, i) => (i === index ? { ...s, price: val } : s))
+                                  );
+                                }}
+                                placeholder={formData.price || 'base'}
+                                aria-label={`Prix MGA, image ${index + 1}`}
+                                className="min-h-[2.25rem] w-full min-w-0 rounded border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-secondary"
+                              />
+                            </div>
+                            {/* Couleurs de la variante */}
+                            <div className="flex min-w-0 flex-col gap-1">
+                              <label className="shrink-0 text-xs text-gray-500">Couleurs :</label>
+                              <div className="flex flex-wrap items-center gap-1">
+                                {sel.colors.map((color) => (
+                                  <span
+                                    key={color.name}
+                                    className="inline-flex items-center gap-1 rounded-full border border-gray-300 bg-white px-2 py-0.5 text-xs"
+                                  >
+                                    <span
+                                      className="inline-block h-3 w-3 rounded-full border border-gray-200"
+                                      style={{ backgroundColor: color.hex }}
+                                    />
+                                    {color.name}
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        galleryUserEditedRef.current = true;
+                                        setSelectedGalleryImages(prev =>
+                                          prev.map((s, i) =>
+                                            i === index
+                                              ? { ...s, colors: s.colors.filter(c => c.name !== color.name) }
+                                              : s
+                                          )
+                                        );
+                                      }}
+                                      className="ml-0.5 text-gray-400 hover:text-red-500"
+                                      title={`Retirer ${color.name}`}
+                                    >
+                                      <X size={12} />
+                                    </button>
+                                  </span>
+                                ))}
+                                {/* Bouton pipette (EyeDropper API) */}
+                                {'EyeDropper' in window && (
+                                  <button
+                                    type="button"
+                                    onClick={async () => {
+                                      try {
+                                        const eyeDropper = new (window as any).EyeDropper();
+                                        const result = await eyeDropper.open();
+                                        const hex = result.sRGBHex as string;
+                                        // Trouver la couleur prédéfinie la plus proche
+                                        const hexToRgb = (h: string) => {
+                                          const v = h.replace('#', '');
+                                          return { r: parseInt(v.substring(0, 2), 16), g: parseInt(v.substring(2, 4), 16), b: parseInt(v.substring(4, 6), 16) };
+                                        };
+                                        const picked = hexToRgb(hex);
+                                        let bestColor = predefinedColors[0];
+                                        let bestDist = Infinity;
+                                        for (const pc of predefinedColors) {
+                                          const c = hexToRgb(pc.hex);
+                                          const d = Math.sqrt((picked.r - c.r) ** 2 + (picked.g - c.g) ** 2 + (picked.b - c.b) ** 2);
+                                          if (d < bestDist) { bestDist = d; bestColor = pc; }
+                                        }
+                                        // Ajouter si pas déjà présente
+                                        galleryUserEditedRef.current = true;
+                                        setSelectedGalleryImages(prev =>
+                                          prev.map((s, i) =>
+                                            i === index && !s.colors.some(c => c.name === bestColor.name)
+                                              ? { ...s, colors: [...s.colors, { name: bestColor.name, hex: bestColor.hex }] }
+                                              : s
+                                          )
+                                        );
+                                        toast.success(`Couleur prélevée : ${bestColor.name}`);
+                                      } catch {
+                                        /* utilisateur a annulé */
+                                      }
+                                    }}
+                                    className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-gray-400 text-gray-400 hover:border-secondary hover:text-secondary"
+                                    title="Prélever une couleur depuis l'écran"
+                                  >
+                                    <Pipette size={12} />
+                                  </button>
+                                )}
+                                {/* Bouton ajouter couleur */}
+                                <div className="relative">
+                                  <button
+                                    type="button"
+                                    onClick={() => setVariantColorPickerOpen(prev => prev === index ? -1 : index)}
+                                    className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-dashed border-gray-400 text-gray-400 hover:border-secondary hover:text-secondary"
+                                    title="Choisir dans la palette"
+                                  >
+                                    <span className="text-sm font-bold leading-none">+</span>
+                                  </button>
+                                  {variantColorPickerOpen === index && (
+                                    <>
+                                      <div className="fixed inset-0 z-30" onClick={() => { setVariantColorPickerOpen(-1); setVariantCustomColor({ name: '', hex: '#888888' }); }} />
+                                      <div className="absolute left-0 bottom-full z-40 mb-1 w-max max-w-[18rem] rounded-lg border border-gray-200 bg-white p-2 shadow-lg">
+                                        <div className="flex flex-wrap gap-1.5">
+                                          {predefinedColors
+                                            .filter(pc => !sel.colors.some(c => c.name === pc.name))
+                                            .map(pc => (
+                                              <button
+                                                key={pc.name}
+                                                type="button"
+                                                onClick={() => {
+                                                  galleryUserEditedRef.current = true;
+                                                  setSelectedGalleryImages(prev =>
+                                                    prev.map((s, i) =>
+                                                      i === index
+                                                        ? { ...s, colors: [...s.colors, { name: pc.name, hex: pc.hex }] }
+                                                        : s
+                                                    )
+                                                  );
+                                                  setVariantColorPickerOpen(-1);
+                                                  setVariantCustomColor({ name: '', hex: '#888888' });
+                                                }}
+                                                className={cn(
+                                                  'h-7 w-7 rounded-full border-2 transition-transform hover:scale-110',
+                                                  pc.dark ? 'border-gray-500' : 'border-gray-300'
+                                                )}
+                                                style={{ backgroundColor: pc.hex }}
+                                                title={pc.name}
+                                              />
+                                            ))}
+                                        </div>
+                                        {/* Couleur personnalisée */}
+                                        <div className="mt-2 border-t border-gray-200 pt-2">
+                                          <p className="mb-1 text-xs text-gray-500">Couleur personnalisée</p>
+                                          <div className="flex items-center gap-1.5">
+                                            <input
+                                              type="color"
+                                              value={variantCustomColor.hex}
+                                              onChange={(e) => setVariantCustomColor(prev => ({ ...prev, hex: e.target.value }))}
+                                              className="h-7 w-7 shrink-0 cursor-pointer rounded border border-gray-300 p-0"
+                                              title="Choisir la teinte"
+                                            />
+                                            <input
+                                              type="text"
+                                              value={variantCustomColor.name}
+                                              onChange={(e) => {
+                                                const name = e.target.value;
+                                                const resolvedHex = getHexFromColorName(name);
+                                                setVariantCustomColor(prev => ({
+                                                  ...prev,
+                                                  name,
+                                                  ...(resolvedHex ? { hex: resolvedHex } : {}),
+                                                }));
+                                              }}
+                                              placeholder="Nom (ex: Camel)"
+                                              className="min-w-0 flex-1 rounded border border-gray-300 px-2 py-1 text-xs focus:ring-1 focus:ring-secondary"
+                                              onKeyDown={(e) => {
+                                                if (e.key === 'Enter') {
+                                                  e.preventDefault();
+                                                  const name = variantCustomColor.name.trim();
+                                                  if (!name) return;
+                                                  if (sel.colors.some(c => c.name.toLowerCase() === name.toLowerCase())) {
+                                                    toast.error('Cette couleur existe déjà');
+                                                    return;
+                                                  }
+                                                  galleryUserEditedRef.current = true;
+                                                  setSelectedGalleryImages(prev =>
+                                                    prev.map((s, i) =>
+                                                      i === index
+                                                        ? { ...s, colors: [...s.colors, { name, hex: variantCustomColor.hex }] }
+                                                        : s
+                                                    )
+                                                  );
+                                                  setVariantCustomColor({ name: '', hex: '#888888' });
+                                                  setVariantColorPickerOpen(-1);
+                                                }
+                                              }}
+                                            />
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                const name = variantCustomColor.name.trim();
+                                                if (!name) { toast.error('Donnez un nom à la couleur'); return; }
+                                                if (sel.colors.some(c => c.name.toLowerCase() === name.toLowerCase())) {
+                                                  toast.error('Cette couleur existe déjà');
+                                                  return;
+                                                }
+                                                galleryUserEditedRef.current = true;
+                                                setSelectedGalleryImages(prev =>
+                                                  prev.map((s, i) =>
+                                                    i === index
+                                                      ? { ...s, colors: [...s.colors, { name, hex: variantCustomColor.hex }] }
+                                                      : s
+                                                  )
+                                                );
+                                                setVariantCustomColor({ name: '', hex: '#888888' });
+                                                setVariantColorPickerOpen(-1);
+                                              }}
+                                              className="shrink-0 rounded bg-secondary px-2 py-1 text-xs text-white hover:bg-secondary/90"
+                                            >
+                                              OK
+                                            </button>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -2008,7 +2687,17 @@ export default function AdminProducts() {
                   {isLoadingVariants ? (
                     <p className="text-sm text-gray-500">Chargement...</p>
                   ) : variantOptions.length === 0 ? (
-                    <p className="text-sm text-gray-500 italic">Aucune option définie. Ajoutez des options pour créer des variantes.</p>
+                    <div className="space-y-2 text-sm text-gray-600">
+                      <p className="text-gray-500 italic">
+                        Aucune option (taille, couleur, …). Ajoutez une option uniquement si vos variantes
+                        passent par des attributs classiques.
+                      </p>
+                      <p>
+                        Pour des modèles différents par photo (stock / prix par image), utilisez la section
+                        « Images du produit » au-dessus : sélectionnez les images puis cochez « Variante
+                        (achetable) » sur chaque modèle en vente.
+                      </p>
+                    </div>
                   ) : (
                     <div className="space-y-2">
                       {variantOptions.map((option) => (
@@ -2740,6 +3429,187 @@ export default function AdminProducts() {
           </div>
         </div>
       </Modal>
+
+      {/* ── Modal Sélecteur de Galerie (z-[60] pour passer au-dessus de l'Offcanvas z-50) ── */}
+      {isGalleryPickerOpen && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+          onClick={() => setIsGalleryPickerOpen(false)}
+        >
+          <div
+            className="bg-white rounded-lg shadow-xl w-full max-w-2xl relative max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between p-4 border-b border-gray-200">
+              <h2 className="text-lg font-heading font-semibold text-text-dark">Sélectionner des images depuis la galerie</h2>
+              <button onClick={() => setIsGalleryPickerOpen(false)} className="text-gray-500 hover:text-gray-700">
+                <X size={20} />
+              </button>
+            </div>
+            {/* Body */}
+            <div className="p-4 space-y-4">
+              {isLoadingGallery ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="animate-spin" size={32} />
+                </div>
+              ) : (
+                <>
+                  {/* Navigation dossiers */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => setGalleryCurrentFolder(null)}
+                      className={cn(
+                        'px-3 py-1.5 rounded-lg text-sm border transition-colors',
+                        galleryCurrentFolder === null
+                          ? 'bg-secondary text-white border-secondary'
+                          : 'bg-gray-100 text-gray-700 border-gray-200 hover:bg-gray-200'
+                      )}
+                    >
+                      Tous
+                    </button>
+                    {galleryFolders.map(folder => (
+                      <button
+                        key={folder.id}
+                        type="button"
+                        onClick={() => setGalleryCurrentFolder(folder.id)}
+                        className={cn(
+                          'px-3 py-1.5 rounded-lg text-sm border transition-colors inline-flex items-center gap-1',
+                          galleryCurrentFolder === folder.id
+                            ? 'bg-secondary text-white border-secondary'
+                            : 'bg-gray-100 text-gray-700 border-gray-200 hover:bg-gray-200'
+                        )}
+                      >
+                        <FolderOpen size={14} />
+                        {folder.name}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Grille d'images */}
+                  <div className="grid grid-cols-3 md:grid-cols-4 gap-3 max-h-[400px] overflow-y-auto">
+                    {galleryImages
+                      .filter(img => galleryCurrentFolder === null || img.folder_id === galleryCurrentFolder)
+                      .map(img => {
+                        const isSelected = selectedGalleryImages.some(s => s.image_url === img.image_url);
+                        return (
+                          <button
+                            key={img.id}
+                            type="button"
+                            onClick={() => toggleGalleryImageSelection(img)}
+                            className={cn(
+                              'relative aspect-square overflow-hidden rounded-lg border-2 transition-all',
+                              isSelected
+                                ? 'border-secondary ring-2 ring-secondary ring-offset-1'
+                                : 'border-gray-200 hover:border-gray-400'
+                            )}
+                          >
+                            <img
+                              src={img.image_url}
+                              alt={img.title || 'Image galerie'}
+                              className="w-full h-full object-cover"
+                              loading="lazy"
+                            />
+                            {isSelected && (
+                              <div className="absolute top-1 right-1 w-6 h-6 bg-secondary rounded-full flex items-center justify-center">
+                                <Check size={14} className="text-white" />
+                              </div>
+                            )}
+                          </button>
+                        );
+                      })}
+                  </div>
+
+                  {galleryImages.filter(img => galleryCurrentFolder === null || img.folder_id === galleryCurrentFolder).length === 0 && (
+                    <p className="text-sm text-gray-500 italic text-center py-8">
+                      Aucune image dans {galleryCurrentFolder ? 'ce dossier' : 'la galerie'}.
+                    </p>
+                  )}
+                </>
+              )}
+
+              {/* Footer */}
+              <div className="flex justify-between items-center pt-4 border-t">
+                <span className="text-sm text-gray-600">
+                  {selectedGalleryImages.length} image(s) sélectionnée(s)
+                </span>
+                <div className="flex gap-3">
+                  <Button
+                    onClick={() => setIsGalleryPickerOpen(false)}
+                    className="bg-gray-200 hover:bg-gray-300 text-gray-800"
+                  >
+                    Annuler
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      const selectedUrls = selectedGalleryImages.map((s) => s.image_url);
+                      setFormData(prev => ({
+                        ...prev,
+                        images: selectedUrls,
+                      }));
+
+                      // Détecter les couleurs par image et les stocker dans chaque GalleryImageSelection
+                      if (selectedUrls.length > 0) {
+                        Promise.all(
+                          selectedGalleryImages.map(async (sel, idx) => {
+                            // Ne pas re-détecter si l'image a déjà des couleurs
+                            if (sel.colors.length > 0) return { idx, colors: sel.colors };
+                            try {
+                              const detected = await detectColorsFromImages([sel.image_url]);
+                              return { idx, colors: detected.map(c => ({ name: c.name, hex: c.hex })) };
+                            } catch {
+                              return { idx, colors: [] as Array<{ name: string; hex: string }> };
+                            }
+                          })
+                        ).then((results) => {
+                          setSelectedGalleryImages(prev => {
+                            const next = [...prev];
+                            for (const r of results) {
+                              if (r.colors.length > 0 && next[r.idx]) {
+                                next[r.idx] = { ...next[r.idx], colors: r.colors };
+                              }
+                            }
+                            return next;
+                          });
+                          // Mettre aussi à jour les couleurs globales du produit
+                          const allDetected = results.flatMap(r => r.colors);
+                          if (allDetected.length > 0) {
+                            setSelectedColors((prev) => {
+                              const newColors = allDetected.filter(
+                                (d) => !prev.some((p) => p.name === d.name),
+                              );
+                              if (newColors.length === 0) return prev;
+                              const next = [
+                                ...prev,
+                                ...newColors.map((c) => ({ name: c.name, hex: c.hex, custom: false })),
+                              ];
+                              setFormData((fd) => ({
+                                ...fd,
+                                colors: next.map((c) => c.name).join(', '),
+                              }));
+                              toast.success(
+                                `Couleur(s) détectée(s) : ${newColors.map((c) => c.name).join(', ')}`,
+                              );
+                              return next;
+                            });
+                          }
+                        });
+                      }
+
+                      setIsGalleryPickerOpen(false);
+                      toast.success(`${selectedGalleryImages.length} image(s) sélectionnée(s)`);
+                    }}
+                    className="bg-secondary hover:bg-secondary/90"
+                  >
+                    Valider la sélection
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

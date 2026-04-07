@@ -48,6 +48,7 @@ export interface CartItem {
   variantId?: string | null;
   variantSku?: string | null;
   variantOptions?: Array<{ name: string; value: string }>;
+  variantImageUrl?: string | null;
 }
 
 export interface User {
