@@ -1,5 +1,7 @@
-// Utility function to merge class names
+import { twMerge } from 'tailwind-merge';
+
+/** Fusionne les classes Tailwind (dernière utilitaire gagnante : ex. text-gray-800 vs text-white). */
 export function cn(...classes: (string | undefined | null | false)[]): string {
-  return classes.filter(Boolean).join(' ');
+  return twMerge(classes.filter(Boolean) as string[]);
 }
 

@@ -14,7 +14,8 @@ export function Button({
   children,
   ...props
 }: ButtonProps) {
-  const baseStyles = 'font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2';
+  const baseStyles =
+    'inline-flex shrink-0 flex-row flex-nowrap items-center justify-center gap-2 font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2';
   
   const variants = {
     primary: 'bg-accent text-white hover:bg-accent/80 focus:ring-accent focus-visible:outline-accent shadow-md hover:shadow-lg',

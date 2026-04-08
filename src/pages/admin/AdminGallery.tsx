@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase';
 import {
   Plus, Trash2, Upload, X, Image as ImageIcon, Loader2, Grid, List,
   FolderPlus, Folder, FolderOpen, ChevronLeft, Edit, Check, MoveRight,
+  Package,
 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Offcanvas } from '../../components/ui/Offcanvas';
@@ -502,6 +503,13 @@ export default function AdminGallery() {
 
   const hasSelection = selectedIds.size > 0;
 
+  const handleCreateProductFromSelection = () => {
+    if (selectedIds.size === 0) return;
+    const ids = Array.from(selectedIds).join(',');
+    const url = `${window.location.origin}/admin/produits?fromGallery=${encodeURIComponent(ids)}`;
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
   return (
     <div>
       {/* ============= En-tête ============= */}
@@ -526,9 +534,9 @@ export default function AdminGallery() {
           )}
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex min-w-0 flex-nowrap items-center gap-2 overflow-x-auto sm:overflow-visible">
           {(filteredImages.length > 0 || folders.length > 0) && (
-            <div className="flex bg-gray-100 rounded-lg p-1">
+            <div className="flex shrink-0 bg-gray-100 rounded-lg p-1">
               <button
                 onClick={() => setViewMode('grid')}
                 className={`p-2 rounded-md transition-colors ${viewMode === 'grid' ? 'bg-white shadow-sm text-secondary' : 'text-gray-500 hover:text-gray-700'}`}
@@ -546,18 +554,25 @@ export default function AdminGallery() {
             </div>
           )}
           {!currentFolderId && (
-            <Button
+            <button
+              type="button"
               onClick={() => { setShowFolderInput(true); setFolderInputValue(''); }}
-              className="bg-gray-200 hover:bg-gray-300 text-gray-800"
+              aria-label="Nouveau dossier"
+              title="Nouveau dossier"
+              className="shrink-0 inline-flex items-center justify-center rounded-md bg-gray-200 p-2 text-gray-800 transition-colors hover:bg-gray-300"
             >
-              <FolderPlus size={18} className="mr-2" />
-              Nouveau dossier
-            </Button>
+              <FolderPlus size={18} className="shrink-0" aria-hidden />
+            </button>
           )}
-          <Button onClick={handleOpenUpload} className="bg-secondary hover:bg-secondary/90">
-            <Plus size={20} className="mr-2" />
-            Ajouter des photos
-          </Button>
+          <button
+            type="button"
+            onClick={handleOpenUpload}
+            aria-label="Ajouter des photos"
+            title="Ajouter des photos"
+            className="shrink-0 inline-flex items-center justify-center rounded-md bg-secondary p-2 text-white shadow-sm transition-colors hover:bg-secondary/90"
+          >
+            <Plus size={18} className="shrink-0" aria-hidden />
+          </button>
         </div>
       </div>
 
@@ -584,19 +599,33 @@ export default function AdminGallery() {
               </div>
             </div>
           ) : (
-            <div className="flex flex-wrap items-center gap-3">
-              <span className="text-sm font-medium text-secondary">
+            <div className="flex min-w-0 flex-nowrap items-center gap-2 sm:gap-3 overflow-x-auto">
+              <span className="min-w-0 shrink-0 text-sm font-medium text-secondary">
                 {selectedIds.size} sélectionnée{selectedIds.size > 1 ? 's' : ''}
               </span>
-              <div className="flex items-center gap-2 ml-auto flex-wrap">
+              <div className="ml-auto flex shrink-0 flex-nowrap items-center gap-2">
                 {/* Déplacer */}
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={handleCreateProductFromSelection}
+                  className="text-sm"
+                >
+                  <Package size={16} className="shrink-0" aria-hidden />
+                  Créer un produit
+                </Button>
                 <div className="relative">
                   <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
                     onClick={() => setShowMoveMenu(!showMoveMenu)}
-                    className="bg-white hover:bg-gray-50 text-gray-800 border border-gray-300 text-sm"
+                    aria-label="Déplacer vers un dossier"
+                    title="Déplacer"
+                    className="!gap-0 border-gray-300 bg-white px-2 text-gray-900 shadow-sm hover:border-gray-400 hover:bg-gray-50 hover:text-gray-900"
                   >
-                    <MoveRight size={16} className="mr-1" />
-                    Déplacer
+                    <MoveRight size={18} className="shrink-0" aria-hidden />
                   </Button>
                   {showMoveMenu && (
                     <div className="absolute right-0 top-full mt-1 w-56 bg-white rounded-lg shadow-lg border border-gray-200 z-20 py-1">
@@ -629,15 +658,25 @@ export default function AdminGallery() {
                 </div>
                 {/* Supprimer */}
                 <Button
+                  type="button"
+                  variant="primary"
+                  size="sm"
                   onClick={handleBulkDelete}
-                  className="bg-red-600 hover:bg-red-700 text-white text-sm"
+                  aria-label="Supprimer la sélection"
+                  title="Supprimer"
+                  className="!gap-0 bg-red-600 px-2 text-white hover:bg-red-700 hover:text-white focus-visible:outline-red-600 focus:ring-red-600"
                 >
-                  <Trash2 size={16} className="mr-1" />
-                  Supprimer
+                  <Trash2 size={18} className="shrink-0" aria-hidden />
                 </Button>
                 {/* Annuler */}
-                <button onClick={clearSelection} className="p-2 text-gray-500 hover:text-gray-700">
-                  <X size={18} />
+                <button
+                  type="button"
+                  onClick={clearSelection}
+                  aria-label="Annuler la sélection"
+                  title="Annuler"
+                  className="inline-flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-lg p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+                >
+                  <X size={18} aria-hidden />
                 </button>
               </div>
             </div>
@@ -659,7 +698,7 @@ export default function AdminGallery() {
             autoFocus
           />
           <Button onClick={handleCreateFolder} className="bg-secondary hover:bg-secondary/90 text-sm">
-            <Check size={16} className="mr-1" />
+            <Check size={16} className="shrink-0" aria-hidden />
             Créer
           </Button>
           <button onClick={() => setShowFolderInput(false)} className="p-2 text-gray-400 hover:text-gray-600">
@@ -888,27 +927,27 @@ export default function AdminGallery() {
         position="right"
         width="lg"
         footer={
-          <div className="flex flex-col sm:flex-row justify-end gap-3">
+          <div className="flex flex-nowrap items-center justify-end gap-3">
             <Button
               onClick={() => setIsOffcanvasOpen(false)}
               disabled={isUploading}
-              className="bg-gray-200 hover:bg-gray-300 text-gray-800 w-full sm:w-auto"
+              className="shrink-0 bg-gray-200 hover:bg-gray-300 text-gray-800"
             >
               Annuler
             </Button>
             <Button
               onClick={handleUpload}
               disabled={isUploading || selectedFiles.length === 0}
-              className="bg-secondary hover:bg-secondary/90 w-full sm:w-auto disabled:opacity-50"
+              className="shrink-0 bg-secondary hover:bg-secondary/90 disabled:opacity-50"
             >
               {isUploading ? (
                 <>
-                  <Loader2 size={18} className="mr-2 animate-spin" />
+                  <Loader2 size={18} className="shrink-0 animate-spin" aria-hidden />
                   Upload en cours...
                 </>
               ) : (
                 <>
-                  <Upload size={18} className="mr-2" />
+                  <Upload size={18} className="shrink-0" aria-hidden />
                   Uploader {selectedFiles.length > 0 && `(${selectedFiles.length})`}
                 </>
               )}

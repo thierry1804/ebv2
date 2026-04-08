@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { Product } from '../../types';
 import { Plus, Edit, Trash2, Upload, X, Check, Package, Layers, ChevronDown, ChevronUp, Loader2, Image as ImageIcon, FolderOpen, Pipette } from 'lucide-react';
@@ -195,6 +196,7 @@ function parseProductImagesFromDb(imagesRaw: unknown, legacyImage?: string | nul
 
 export default function AdminProducts() {
   const confirm = useConfirm();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { adminUser } = useAdminAuth();
   const { categories } = useCategories();
   const hasLoadedProductsRef = useRef(false);
@@ -303,6 +305,8 @@ export default function AdminProducts() {
   const gallerySyncedKeyRef = useRef<string | null>(null);
   /** Empêche le useEffect de ré-écraser les modifications galerie faites par l'utilisateur */
   const galleryUserEditedRef = useRef(false);
+  /** Évite un double traitement du paramètre d’URL `fromGallery` (ex. React Strict Mode). */
+  const galleryFromUrlHandledRef = useRef(false);
   /** Une fois par session d’édition : corrige hasVariants si la BDD contient des variantes mais has_variants est resté à false */
   const autoEnableVariantsFromApiRef = useRef(false);
   const nameFieldRef = useRef<HTMLInputElement>(null);
@@ -565,6 +569,91 @@ export default function AdminProducts() {
     setIsOffcanvasOpen(true);
   };
 
+  // Ouverture « Nouveau produit » avec images présélectionnées depuis la page Galerie (?fromGallery=id1,id2)
+  useEffect(() => {
+    const raw = searchParams.get('fromGallery');
+    if (!raw?.trim()) return;
+    if (galleryFromUrlHandledRef.current) return;
+    galleryFromUrlHandledRef.current = true;
+
+    const ids = raw.split(',').map((s) => s.trim()).filter(Boolean);
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('fromGallery');
+        return next;
+      },
+      { replace: true },
+    );
+
+    if (ids.length === 0) return;
+
+    void (async () => {
+      const { data, error } = await supabase.from('gallery').select('*').in('id', ids);
+      if (error) {
+        console.error(`${ADMIN_LOG} fromGallery bootstrap`, error);
+        toast.error(error.message || 'Impossible de charger les images galerie');
+        galleryFromUrlHandledRef.current = false;
+        return;
+      }
+      const rows = data || [];
+      const byId = new Map(rows.map((r: Record<string, unknown>) => [String(r.id), r]));
+      const selections: GalleryImageSelection[] = [];
+      for (const id of ids) {
+        const row = byId.get(id);
+        if (!row) continue;
+        selections.push({
+          id: String(row.id),
+          image_url: normalizeImageApiUrl(String(row.image_url ?? '')),
+          title: (row.title as string | null) ?? null,
+          isVariant: false,
+          inStock: true,
+          price: '',
+          colors: [],
+        });
+      }
+      if (selections.length === 0) {
+        toast.error('Aucune image galerie trouvée pour cette sélection.');
+        galleryFromUrlHandledRef.current = false;
+        return;
+      }
+      if (selections.length < ids.length) {
+        toast(`Certaines images sont introuvables (${selections.length}/${ids.length} chargées).`, {
+          icon: 'ℹ️',
+        });
+      }
+
+      setFieldErrors({});
+      setEditingProduct(null);
+      setFormData({
+        name: '',
+        category: '',
+        price: '',
+        description: '',
+        composition: '',
+        stock: '',
+        sizes: '',
+        colors: '',
+        images: [],
+        isNew: false,
+        isOnSale: false,
+        salePrice: '',
+        brand: '',
+        hasVariants: false,
+      });
+      setSelectedColors([]);
+      setSelectedColorHex('#1abc9c');
+      setCustomColorHexInput('#1abc9c');
+      setCustomColorName('');
+      setIsVariantsSectionOpen(false);
+      setSelectedGalleryImages(selections);
+      gallerySyncedKeyRef.current = null;
+      galleryUserEditedRef.current = true;
+      autoEnableVariantsFromApiRef.current = false;
+      setIsOffcanvasOpen(true);
+    })();
+  }, [searchParams, setSearchParams]);
+
   const handleEdit = (product: Product) => {
     setFieldErrors({});
     setEditingProduct(product);
@@ -659,6 +748,24 @@ export default function AdminProducts() {
     );
     setIsOffcanvasOpen(true);
   };
+
+  // Ouvrir la fiche produit depuis ?openProduct=id (bouton « Voir la fiche dans Produits » après enregistrement)
+  useEffect(() => {
+    const id = searchParams.get('openProduct');
+    if (!id) return;
+    const p = products.find((x) => x.id === id);
+    if (!p) return;
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('openProduct');
+        return next;
+      },
+      { replace: true },
+    );
+    handleEdit(p);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ouverture ponctuelle depuis l’URL
+  }, [searchParams, products, setSearchParams]);
 
   // Si le produit a des options / variantes en BDD mais has_variants est false (données héritées ou incohérentes), aligner le formulaire
   useEffect(() => {
@@ -1252,6 +1359,7 @@ export default function AdminProducts() {
     const controller = new AbortController();
 
     try {
+      const wasEditing = Boolean(editingProduct);
       saveAbortRef.current = controller;
       setIsSaving(true);
       setSaveStep('database');
@@ -1340,7 +1448,6 @@ export default function AdminProducts() {
           throw new Error(errBody.message || `HTTP ${patchRes.status}`);
         }
         console.log(`${ADMIN_LOG} save · PATCH OK`, { id: editingProduct.id });
-        toast.success('Produit modifié avec succès');
       } else {
         const clientId = crypto.randomUUID();
         savedProductId = clientId;
@@ -1383,8 +1490,6 @@ export default function AdminProducts() {
           hasVariants: productData.has_variants || false,
         };
         setEditingProduct(newProduct);
-
-        toast.success('Produit créé avec succès');
       }
 
       // Sauvegarder les variantes-images depuis la galerie (seulement s'il y a des images marquées variante)
@@ -1400,6 +1505,31 @@ export default function AdminProducts() {
       console.log(`${ADMIN_LOG} save · rechargement liste (loadProducts)`);
       await loadProducts();
       console.log(`${ADMIN_LOG} save · loadProducts terminé`);
+
+      toast.success(
+        (t) => (
+          <div className="flex flex-col gap-2 text-sm text-gray-800 max-w-xs">
+            <span>
+              {wasEditing ? 'Produit modifié avec succès' : 'Produit créé avec succès'}
+            </span>
+            <button
+              type="button"
+              className="font-medium text-secondary hover:underline text-left"
+              onClick={() => {
+                toast.dismiss(t.id);
+                setSearchParams((prev) => {
+                  const next = new URLSearchParams(prev);
+                  next.set('openProduct', savedProductId);
+                  return next;
+                });
+              }}
+            >
+              Voir la fiche dans Produits
+            </button>
+          </div>
+        ),
+        { duration: 12000 },
+      );
 
       // Ne pas fermer le panneau si on vient de créer le produit et qu'il a des variantes
       if (!editingProduct && formData.hasVariants) {
@@ -2244,10 +2374,38 @@ export default function AdminProducts() {
                               type="checkbox"
                               checked={sel.isVariant}
                               onChange={(e) => {
+                                const checked = e.target.checked;
+                                const url = sel.image_url;
+                                const hadColors = sel.colors.length > 0;
                                 galleryUserEditedRef.current = true;
-                                setSelectedGalleryImages(prev =>
-                                  prev.map((s, i) => (i === index ? { ...s, isVariant: e.target.checked } : s))
+                                setSelectedGalleryImages((prev) =>
+                                  prev.map((s, i) =>
+                                    i === index ? { ...s, isVariant: checked } : s,
+                                  ),
                                 );
+                                if (checked && url && !hadColors) {
+                                  void detectColorsFromImages([url]).then((detected) => {
+                                    const mapped = detected.map((c) => ({
+                                      name: c.name,
+                                      hex: c.hex,
+                                    }));
+                                    if (mapped.length === 0) return;
+                                    setSelectedGalleryImages((prev) => {
+                                      const row = prev[index];
+                                      if (
+                                        !row ||
+                                        row.image_url !== url ||
+                                        !row.isVariant ||
+                                        row.colors.length > 0
+                                      ) {
+                                        return prev;
+                                      }
+                                      return prev.map((s, i) =>
+                                        i === index ? { ...s, colors: mapped } : s,
+                                      );
+                                    });
+                                  });
+                                }
                               }}
                               className="mt-0.5 h-4 w-4 shrink-0 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                             />
@@ -3495,54 +3653,6 @@ export default function AdminProducts() {
                         ...prev,
                         images: selectedUrls,
                       }));
-
-                      // Détecter les couleurs par image et les stocker dans chaque GalleryImageSelection
-                      if (selectedUrls.length > 0) {
-                        Promise.all(
-                          selectedGalleryImages.map(async (sel, idx) => {
-                            // Ne pas re-détecter si l'image a déjà des couleurs
-                            if (sel.colors.length > 0) return { idx, colors: sel.colors };
-                            try {
-                              const detected = await detectColorsFromImages([sel.image_url]);
-                              return { idx, colors: detected.map(c => ({ name: c.name, hex: c.hex })) };
-                            } catch {
-                              return { idx, colors: [] as Array<{ name: string; hex: string }> };
-                            }
-                          })
-                        ).then((results) => {
-                          setSelectedGalleryImages(prev => {
-                            const next = [...prev];
-                            for (const r of results) {
-                              if (r.colors.length > 0 && next[r.idx]) {
-                                next[r.idx] = { ...next[r.idx], colors: r.colors };
-                              }
-                            }
-                            return next;
-                          });
-                          // Mettre aussi à jour les couleurs globales du produit
-                          const allDetected = results.flatMap(r => r.colors);
-                          if (allDetected.length > 0) {
-                            setSelectedColors((prev) => {
-                              const newColors = allDetected.filter(
-                                (d) => !prev.some((p) => p.name === d.name),
-                              );
-                              if (newColors.length === 0) return prev;
-                              const next = [
-                                ...prev,
-                                ...newColors.map((c) => ({ name: c.name, hex: c.hex, custom: false })),
-                              ];
-                              setFormData((fd) => ({
-                                ...fd,
-                                colors: next.map((c) => c.name).join(', '),
-                              }));
-                              toast.success(
-                                `Couleur(s) détectée(s) : ${newColors.map((c) => c.name).join(', ')}`,
-                              );
-                              return next;
-                            });
-                          }
-                        });
-                      }
 
                       setIsGalleryPickerOpen(false);
                       toast.success(`${selectedGalleryImages.length} image(s) sélectionnée(s)`);
