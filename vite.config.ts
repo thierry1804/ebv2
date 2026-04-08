@@ -1,11 +1,26 @@
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 
 // https://vitejs.dev/config/
-export default defineConfig({
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), '');
+  const imageApiBase = (env.VITE_IMAGE_API_BASE_URL || '').replace(/\/$/, '');
+
+  return {
   plugins: [react()],
   server: {
     port: 5174,
+    // Proxy des images vers l’API : même origine que le front en dev → évite net::ERR_BLOCKED_BY_ORB sur les <img>
+    ...(imageApiBase
+      ? {
+          proxy: {
+            '/api/images': {
+              target: imageApiBase,
+              changeOrigin: true,
+            },
+          },
+        }
+      : {}),
   },
   optimizeDeps: {
     exclude: ['lucide-react'],
@@ -56,4 +71,5 @@ export default defineConfig({
     // S'assurer que les chemins sont relatifs pour fonctionner partout
     assetsDir: 'assets',
   },
+};
 });

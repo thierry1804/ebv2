@@ -979,20 +979,6 @@ export default function AdminProducts() {
     }
   };
 
-  /** Supprime un fichier distant : API images eshop ou bucket Supabase (legacy). */
-  const deleteRemoteProductImage = async (rawUrl: string): Promise<void> => {
-    const trimmed = typeof rawUrl === 'string' ? rawUrl.trim() : '';
-    if (!trimmed) return;
-    const imageUrl = normalizeImageApiUrl(trimmed);
-    if (isImageApiUrl(imageUrl)) {
-      await deleteImageFromImageApi(imageUrl);
-      return;
-    }
-    if (imageUrl.includes('supabase.co/storage')) {
-      await deleteImageFromStorage(imageUrl, 'products');
-    }
-  };
-
   const handleRemoveImage = async (index: number) => {
     const imageToRemove = formData.images[index];
 
@@ -1461,7 +1447,7 @@ export default function AdminProducts() {
     const ok = await confirm({
       title: 'Supprimer le produit',
       message:
-        'Cette action est définitive : le produit, ses variantes et les fichiers images associés seront supprimés.',
+        'Cette action est définitive : le produit et ses variantes seront supprimés en base. Les fichiers images sur le serveur ne seront pas effacés.',
       confirmLabel: 'Supprimer',
       cancelLabel: 'Annuler',
       variant: 'danger',
@@ -1472,45 +1458,6 @@ export default function AdminProducts() {
     const toastId = toast.loading('Suppression en cours…');
 
     try {
-      const { data: productData, error: fetchError } = await supabase
-        .from('products')
-        .select('images')
-        .eq('id', id)
-        .single();
-
-      if (fetchError) {
-        console.error('Erreur lors de la récupération du produit:', fetchError);
-      }
-
-      const { data: variantRows, error: variantFetchError } = await supabase
-        .from('product_variants')
-        .select('images')
-        .eq('product_id', id);
-
-      if (variantFetchError) {
-        console.error('Erreur lors de la récupération des variantes:', variantFetchError);
-      }
-
-      const imagesToDelete: string[] = [];
-      if (productData && Array.isArray(productData.images)) {
-        imagesToDelete.push(...productData.images);
-      }
-      if (variantRows) {
-        for (const row of variantRows) {
-          if (Array.isArray(row.images)) {
-            imagesToDelete.push(...row.images);
-          }
-        }
-      }
-
-      const uniqueUrls = [
-        ...new Set(imagesToDelete.map((u) => String(u).trim()).filter(Boolean)),
-      ];
-      for (const rawUrl of uniqueUrls) {
-        await deleteRemoteProductImage(rawUrl);
-      }
-
-      // Supprimer le produit de la base de données
       const { error } = await supabase.from('products').delete().eq('id', id);
       if (error) throw error;
       toast.success('Produit supprimé avec succès', { id: toastId });

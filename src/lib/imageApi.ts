@@ -24,6 +24,11 @@ export function normalizeImageApiUrl(input: string): string {
     const u = isAbsolute ? new URL(trimmed) : new URL(trimmed, base);
 
     if (u.pathname.startsWith('/api/images/')) {
+      // En dev, URL relative → le navigateur charge depuis l’origine du front (Vite proxy) au lieu de l’API en cross-origin,
+      // ce qui évite le blocage ORB (Chrome) sur les <img> alors que l’URL directe dans un onglet fonctionne.
+      if (import.meta.env.DEV) {
+        return `${u.pathname}${u.search}${u.hash}`;
+      }
       return `${base.origin}${u.pathname}${u.search}${u.hash}`;
     }
 

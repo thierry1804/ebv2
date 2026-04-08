@@ -74,6 +74,9 @@ export default function AdminGallery() {
   // Sélection multiple
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
+  /** IDs dont le fichier image n’existe pas / ne charge pas (masquées dans la grille) */
+  const [brokenImageIds, setBrokenImageIds] = useState<Set<string>>(new Set());
+
   // Dossier — création / renommage
   const [showFolderInput, setShowFolderInput] = useState(false);
   const [folderInputValue, setFolderInputValue] = useState('');
@@ -136,6 +139,7 @@ export default function AdminGallery() {
         console.warn('Table gallery:', error);
         setImages([]);
       } else {
+        setBrokenImageIds(new Set());
         setImages(
           (data || []).map((img: GalleryImage) => ({
             ...img,
@@ -158,6 +162,20 @@ export default function AdminGallery() {
     [images, currentFolderId]
   );
 
+  const displayedGalleryImages = useMemo(
+    () => filteredImages.filter((img) => !brokenImageIds.has(img.id)),
+    [filteredImages, brokenImageIds]
+  );
+
+  const handleGalleryImageError = (id: string) => {
+    setBrokenImageIds((prev) => new Set(prev).add(id));
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  };
+
   const currentFolder = useMemo(
     () => folders.find((f) => f.id === currentFolderId) ?? null,
     [folders, currentFolderId]
@@ -177,10 +195,10 @@ export default function AdminGallery() {
   };
 
   const toggleSelectAll = () => {
-    if (selectedIds.size === filteredImages.length) {
+    if (selectedIds.size === displayedGalleryImages.length) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(filteredImages.map((img) => img.id)));
+      setSelectedIds(new Set(displayedGalleryImages.map((img) => img.id)));
     }
   };
 
@@ -501,9 +519,9 @@ export default function AdminGallery() {
           <h1 className="text-3xl font-heading font-bold text-text-dark">
             {currentFolder ? currentFolder.name : 'Galerie'}
           </h1>
-          {filteredImages.length > 0 && (
+          {displayedGalleryImages.length > 0 && (
             <span className="text-sm text-gray-500 mt-1">
-              ({filteredImages.length} photo{filteredImages.length > 1 ? 's' : ''})
+              ({displayedGalleryImages.length} photo{displayedGalleryImages.length > 1 ? 's' : ''})
             </span>
           )}
         </div>
@@ -712,12 +730,12 @@ export default function AdminGallery() {
       )}
 
       {/* ============= Sélectionner tout ============= */}
-      {filteredImages.length > 0 && (
+      {displayedGalleryImages.length > 0 && (
         <div className="flex items-center gap-3 mb-4">
           <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-600 hover:text-gray-900">
             <input
               type="checkbox"
-              checked={selectedIds.size === filteredImages.length && filteredImages.length > 0}
+              checked={selectedIds.size === displayedGalleryImages.length && displayedGalleryImages.length > 0}
               onChange={toggleSelectAll}
               className="rounded border-gray-300"
             />
@@ -733,10 +751,18 @@ export default function AdminGallery() {
           <p className="text-lg">Aucune photo {currentFolder ? `dans "${currentFolder.name}"` : 'dans la galerie'}</p>
           <p className="text-sm mt-1">Cliquez sur "Ajouter des photos" pour commencer</p>
         </div>
+      ) : filteredImages.length > 0 && displayedGalleryImages.length === 0 ? (
+        <div className="text-center py-16 text-gray-500">
+          <ImageIcon size={48} className="mx-auto mb-4 opacity-50" />
+          <p className="text-lg">Aucune photo affichable</p>
+          <p className="text-sm mt-1 max-w-md mx-auto">
+            Les fichiers ne sont pas disponibles sur le serveur pour les entrées encore enregistrées. Rechargez après correction ou supprimez les lignes obsolètes en base.
+          </p>
+        </div>
       ) : viewMode === 'grid' ? (
         /* ============= Vue vignettes ============= */
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-          {filteredImages.map((image) => {
+          {displayedGalleryImages.map((image) => {
             const isSelected = selectedIds.has(image.id);
             return (
               <div
@@ -759,6 +785,7 @@ export default function AdminGallery() {
                     src={image.image_url}
                     alt={image.title || 'Photo galerie'}
                     className="w-full h-full object-cover transition-transform group-hover:scale-105"
+                    onError={() => handleGalleryImageError(image.id)}
                   />
                 </div>
                 <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-end justify-between p-3 opacity-0 group-hover:opacity-100">
@@ -788,7 +815,7 @@ export default function AdminGallery() {
                 <th className="px-4 py-3 w-10">
                   <input
                     type="checkbox"
-                    checked={selectedIds.size === filteredImages.length && filteredImages.length > 0}
+                    checked={selectedIds.size === displayedGalleryImages.length && displayedGalleryImages.length > 0}
                     onChange={toggleSelectAll}
                     className="rounded border-gray-300"
                   />
@@ -801,7 +828,7 @@ export default function AdminGallery() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {filteredImages.map((image) => {
+              {displayedGalleryImages.map((image) => {
                 const isSelected = selectedIds.has(image.id);
                 return (
                   <tr key={image.id} className={`hover:bg-gray-50 ${isSelected ? 'bg-secondary/5' : ''}`}>
@@ -815,7 +842,12 @@ export default function AdminGallery() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="w-16 h-16 rounded-lg overflow-hidden bg-gray-100">
-                        <img src={image.image_url} alt={image.title || 'Photo galerie'} className="w-full h-full object-cover" />
+                        <img
+                          src={image.image_url}
+                          alt={image.title || 'Photo galerie'}
+                          className="w-full h-full object-cover"
+                          onError={() => handleGalleryImageError(image.id)}
+                        />
                       </div>
                     </td>
                     <td className="px-4 py-3">
