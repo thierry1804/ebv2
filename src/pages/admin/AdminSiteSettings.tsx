@@ -286,7 +286,7 @@ export default function AdminSiteSettings() {
             Supabase.
           </p>
         ) : (
-          <div className="overflow-x-auto border border-gray-200 rounded-lg max-h-[min(70vh,32rem)] overflow-y-auto">
+          <div className="scrollbar-thin overflow-x-auto border border-gray-200 rounded-lg max-h-[min(70vh,32rem)] overflow-y-auto">
             <table className="w-full text-sm text-left">
               <thead className="bg-gray-50 text-gray-700 sticky top-0 z-10">
                 <tr>
@@ -339,7 +339,7 @@ export default function AdminSiteSettings() {
                             <p className="text-gray-600 font-sans text-xs mb-2 font-medium">
                               Détails (comment / JSON)
                             </p>
-                            <pre className="whitespace-pre-wrap break-all text-gray-800 max-h-64 overflow-y-auto">
+                            <pre className="scrollbar-thin whitespace-pre-wrap break-all text-gray-800 max-h-64 overflow-y-auto">
                               {row.details ? JSON.stringify(row.details, null, 2) : '—'}
                             </pre>
                           </td>

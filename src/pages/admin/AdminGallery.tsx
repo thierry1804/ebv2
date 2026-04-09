@@ -534,7 +534,7 @@ export default function AdminGallery() {
           )}
         </div>
 
-        <div className="flex min-w-0 flex-nowrap items-center gap-2 overflow-x-auto sm:overflow-visible">
+        <div className="scrollbar-thin flex min-w-0 flex-nowrap items-center gap-2 overflow-x-auto sm:overflow-visible">
           {(filteredImages.length > 0 || folders.length > 0) && (
             <div className="flex shrink-0 bg-gray-100 rounded-lg p-1">
               <button
@@ -599,7 +599,7 @@ export default function AdminGallery() {
               </div>
             </div>
           ) : (
-            <div className="flex min-w-0 flex-nowrap items-center gap-2 sm:gap-3 overflow-x-auto">
+            <div className="scrollbar-thin flex min-w-0 flex-nowrap items-center gap-2 sm:gap-3 overflow-x-auto">
               <span className="min-w-0 shrink-0 text-sm font-medium text-secondary">
                 {selectedIds.size} sélectionnée{selectedIds.size > 1 ? 's' : ''}
               </span>

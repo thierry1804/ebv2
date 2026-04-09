@@ -117,7 +117,7 @@ export function Modal({ isOpen, onClose, title, children, size = 'md', showBackd
       <div
         ref={modalRef}
         className={cn(
-          'bg-white rounded-lg shadow-xl w-full relative max-h-[90vh] overflow-y-auto pointer-events-auto',
+          'scrollbar-thin bg-white rounded-lg shadow-xl w-full relative max-h-[90vh] overflow-y-auto pointer-events-auto',
           sizes[size],
           draggable && isDragging && 'cursor-move',
           draggable && position !== null && 'transition-none'

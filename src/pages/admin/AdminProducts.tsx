@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { Product } from '../../types';
@@ -287,6 +287,8 @@ export default function AdminProducts() {
   const [galleryImages, setGalleryImages] = useState<GalleryImageItem[]>([]);
   const [galleryCurrentFolder, setGalleryCurrentFolder] = useState<string | null>(null);
   const [isLoadingGallery, setIsLoadingGallery] = useState(false);
+  /** Miniatures dont le fichier ne charge pas (comme AdminGallery) — non affichées dans le sélecteur */
+  const [galleryBrokenImageIds, setGalleryBrokenImageIds] = useState<Set<string>>(new Set());
   /** Incrémenté à la fermeture du modal et au début de chaque chargement — ignore les réponses obsolètes */
   const galleryLoadGenRef = useRef(0);
   const [selectedGalleryImages, setSelectedGalleryImages] = useState<GalleryImageSelection[]>([]);
@@ -1174,6 +1176,7 @@ export default function AdminProducts() {
         toast.error(imagesRes.error.message || 'Impossible de charger les images galerie');
         setGalleryImages([]);
       } else {
+        setGalleryBrokenImageIds(new Set());
         setGalleryImages(
           (imagesRes.data || []).map((img: Record<string, unknown>) => ({
             id: String(img.id),
@@ -1205,6 +1208,22 @@ export default function AdminProducts() {
     }
     void loadGalleryData();
   }, [isGalleryPickerOpen, loadGalleryData]);
+
+  const handleGalleryPickerImageError = useCallback((id: string) => {
+    setGalleryBrokenImageIds((prev) => new Set(prev).add(id));
+    setSelectedGalleryImages((prev) => prev.filter((s) => s.id !== id));
+  }, []);
+
+  const galleryPickerDisplayedImages = useMemo(
+    () =>
+      galleryImages.filter(
+        (img) =>
+          Boolean(img.image_url?.trim()) &&
+          !galleryBrokenImageIds.has(img.id) &&
+          (galleryCurrentFolder === null || img.folder_id === galleryCurrentFolder),
+      ),
+    [galleryImages, galleryCurrentFolder, galleryBrokenImageIds],
+  );
 
   const openGalleryPicker = () => {
     setGalleryCurrentFolder(null);
@@ -2908,7 +2927,7 @@ export default function AdminProducts() {
                     {variants.length === 0 ? (
                       <p className="text-sm text-gray-500 italic">Aucune variante. Cliquez sur "Générer toutes" pour créer automatiquement les combinaisons.</p>
                     ) : (
-                      <div className="overflow-x-auto">
+                      <div className="scrollbar-thin overflow-x-auto">
                         <table className="w-full text-sm">
                           <thead className="bg-gray-100">
                             <tr>
@@ -3542,7 +3561,7 @@ export default function AdminProducts() {
           onClick={() => setIsGalleryPickerOpen(false)}
         >
           <div
-            className="bg-white rounded-lg shadow-xl w-full max-w-2xl relative max-h-[90vh] overflow-y-auto"
+            className="scrollbar-thin bg-white rounded-lg shadow-xl w-full max-w-2xl relative max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
@@ -3593,10 +3612,8 @@ export default function AdminProducts() {
                   </div>
 
                   {/* Grille d'images */}
-                  <div className="grid grid-cols-3 md:grid-cols-4 gap-3 max-h-[400px] overflow-y-auto">
-                    {galleryImages
-                      .filter(img => galleryCurrentFolder === null || img.folder_id === galleryCurrentFolder)
-                      .map(img => {
+                  <div className="scrollbar-thin grid grid-cols-3 md:grid-cols-4 gap-3 max-h-[400px] overflow-y-auto">
+                    {galleryPickerDisplayedImages.map((img) => {
                         const isSelected = selectedGalleryImages.some(s => s.image_url === img.image_url);
                         return (
                           <button
@@ -3615,6 +3632,7 @@ export default function AdminProducts() {
                               alt={img.title || 'Image galerie'}
                               className="w-full h-full object-cover"
                               loading="lazy"
+                              onError={() => handleGalleryPickerImageError(img.id)}
                             />
                             {isSelected && (
                               <div className="absolute top-1 right-1 w-6 h-6 bg-secondary rounded-full flex items-center justify-center">
@@ -3626,7 +3644,7 @@ export default function AdminProducts() {
                       })}
                   </div>
 
-                  {galleryImages.filter(img => galleryCurrentFolder === null || img.folder_id === galleryCurrentFolder).length === 0 && (
+                  {galleryPickerDisplayedImages.length === 0 && (
                     <p className="text-sm text-gray-500 italic text-center py-8">
                       Aucune image dans {galleryCurrentFolder ? 'ce dossier' : 'la galerie'}.
                     </p>

@@ -49,16 +49,16 @@ export function AdminLayout({ children }: AdminLayoutProps) {
   ];
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="h-dvh max-h-dvh overflow-hidden bg-gray-50">
       {/* Sidebar */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 w-64 bg-white shadow-lg transform transition-transform duration-300 ease-in-out lg:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-50 flex min-h-0 w-64 flex-col bg-white shadow-lg transform transition-transform duration-300 ease-in-out lg:translate-x-0 ${
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
-        <div className="flex flex-col h-full">
+        <div className="flex min-h-0 flex-1 flex-col">
           {/* Logo */}
-          <div className="flex items-center justify-between p-6 border-b">
+          <div className="flex shrink-0 items-center justify-between p-6 border-b">
             <Link to="/admin" className="text-2xl font-heading font-bold text-secondary">
               ByValsue Admin
             </Link>
@@ -70,8 +70,8 @@ export function AdminLayout({ children }: AdminLayoutProps) {
             </button>
           </div>
 
-          {/* Navigation */}
-          <nav className="flex-1 p-4 space-y-2">
+          {/* Navigation — scroll si trop d’entrées (mobile / petit écran) */}
+          <nav className="scrollbar-thin min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 space-y-2">
             {menuItems.map((item) => {
               const Icon = item.icon;
               const isActive = location.pathname === item.path;
@@ -94,7 +94,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
           </nav>
 
           {/* User info & logout */}
-          <div className="p-4 border-t">
+          <div className="shrink-0 p-4 border-t bg-white">
             <div className="mb-4 px-4 py-2 text-sm text-gray-600">
               <p className="font-medium">{adminUser?.email}</p>
             </div>
@@ -124,10 +124,9 @@ export function AdminLayout({ children }: AdminLayoutProps) {
         />
       )}
 
-      {/* Main content */}
-      <div className="lg:pl-64">
-        {/* Top bar */}
-        <header className="bg-white shadow-sm sticky top-0 z-30">
+      {/* Colonne principale : scroll unique ici (évite double barre body + menu) */}
+      <div className="flex h-full min-h-0 flex-col lg:pl-64">
+        <header className="z-30 shrink-0 border-b border-gray-100 bg-white shadow-sm">
           <div className="flex items-center justify-between px-6 py-4">
             <button
               onClick={() => setSidebarOpen(true)}
@@ -142,8 +141,9 @@ export function AdminLayout({ children }: AdminLayoutProps) {
           </div>
         </header>
 
-        {/* Page content */}
-        <main className="p-6">{children}</main>
+        <main className="scrollbar-thin min-h-0 flex-1 overflow-y-auto overflow-x-auto p-6">
+          {children}
+        </main>
       </div>
     </div>
   );

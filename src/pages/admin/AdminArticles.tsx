@@ -456,7 +456,7 @@ export default function AdminArticles() {
                 />
               </div>
               {/* Prévisualisation */}
-              <div className="border border-gray-300 rounded-lg p-4 bg-gray-50 overflow-y-auto max-h-[500px]">
+              <div className="scrollbar-thin border border-gray-300 rounded-lg p-4 bg-gray-50 overflow-y-auto max-h-[500px]">
                 <div className="text-xs text-gray-500 mb-2 font-semibold">Aperçu :</div>
                 <div
                   className="prose prose-sm max-w-none text-text-dark/80"

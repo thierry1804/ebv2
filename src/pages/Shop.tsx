@@ -495,7 +495,7 @@ export default function Shop() {
       >
         <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" aria-hidden="true" />
         <div
-          className={`absolute right-0 top-0 h-full w-80 bg-white p-6 overflow-y-auto shadow-2xl transform transition-transform duration-300 ease-out ${
+          className={`scrollbar-thin absolute right-0 top-0 h-full w-80 bg-white p-6 overflow-y-auto shadow-2xl transform transition-transform duration-300 ease-out ${
             showFilters ? 'translate-x-0' : 'translate-x-full'
           }`}
           onClick={(e) => e.stopPropagation()}

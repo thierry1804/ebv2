@@ -729,7 +729,7 @@ export default function ProductDetail() {
                     color: selectedColor || undefined,
                     name: product.name,
                   });
-                  return `https://duoimport.mg/commande-import#${btoa(encodeURIComponent(data))}`;
+                    return `https://duoimport.mg/commande-import?h=${btoa(encodeURIComponent(data))}`;
                 })()}
                 target="_blank"
                 rel="noopener noreferrer"

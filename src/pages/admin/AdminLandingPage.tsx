@@ -918,7 +918,7 @@ export default function AdminLandingPage() {
     return (
       <div>
         <p className="text-gray-500">Éditeur non disponible pour cette section</p>
-        <pre className="mt-4 p-4 bg-gray-100 rounded-lg text-xs overflow-auto">
+        <pre className="scrollbar-thin mt-4 p-4 bg-gray-100 rounded-lg text-xs overflow-auto">
           {JSON.stringify(formData, null, 2)}
         </pre>
       </div>
