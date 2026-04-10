@@ -85,10 +85,6 @@ const loadUserProfile = async (userId: string, retries = 1, delay = 300): Promis
 };
 
 // Fonction pour invalider le cache d'un profil
-const invalidateProfileCache = (userId: string) => {
-  profileCache.delete(userId);
-};
-
 // Fonction pour créer le profil manuellement si le trigger ne l'a pas fait
 const createUserProfile = async (
   userId: string,
@@ -392,9 +388,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       if (data.user) {
+        const registeredUser = data.user;
         // Récupérer les métadonnées de l'utilisateur
-        const userMetadata = data.user.user_metadata || {};
-        const userEmail = data.user.email || email;
+        const userMetadata = registeredUser.user_metadata || {};
+        const userEmail = registeredUser.email || email;
         const userFirstName = userMetadata.first_name || firstName;
         const userLastName = userMetadata.last_name || lastName;
         const userPhone = userMetadata.phone || phone;
@@ -402,7 +399,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Créer un utilisateur temporaire immédiatement avec les métadonnées
         // pour ne pas bloquer l'interface
         const tempUser: User = {
-          id: data.user.id,
+          id: registeredUser.id,
           email: userEmail,
           firstName: userFirstName || '',
           lastName: userLastName || '',
@@ -419,13 +416,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               await new Promise(resolve => setTimeout(resolve, 500));
               
               // Charger le profil utilisateur (1 seule tentative, rapide)
-              let userProfile = await loadUserProfile(data.user.id, 1, 200);
+              let userProfile = await loadUserProfile(registeredUser.id, 1, 200);
               
               // Si le profil n'existe toujours pas, essayer de le créer manuellement (rapide, timeout court)
               if (!userProfile) {
                 userProfile = await Promise.race([
                   createUserProfile(
-                    data.user.id,
+                    registeredUser.id,
                     userEmail,
                     userFirstName,
                     userLastName,

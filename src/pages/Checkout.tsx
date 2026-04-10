@@ -7,16 +7,28 @@ import { usePromoCodeRefunds } from '../hooks/usePromoCodeRefunds';
 import { useOrders } from '../hooks/useOrders';
 import { Button } from '../components/ui/Button';
 import { formatPrice } from '../utils/formatters';
-import { Address } from '../types';
+import { Address, type MobileMoneyOperator } from '../types';
+import {
+  MOBILE_MONEY_OPERATORS,
+  MOBILE_MONEY_OPERATOR_IDS,
+} from '../config/mobileMoney';
 import toast from 'react-hot-toast';
 import { ArrowLeft } from 'lucide-react';
 import { normalizeImageApiUrl } from '../lib/imageApi';
+import {
+  formatMgPhoneDisplay,
+  isValidMgMobilePhone,
+  isValidMgPostalCodeOptional,
+  normalizeMgPhoneDigits,
+  normalizeMgPostalCode,
+} from '../utils/madagascarContact';
+import { formatAppError, withTimeout } from '../utils/errors';
 
 type Step = 'shipping' | 'payment' | 'confirmation';
 
 export default function Checkout() {
   const navigate = useNavigate();
-  const { items, getSubtotal, getTotal, clearCart } = useCart();
+  const { items, getSubtotal, clearCart } = useCart();
   const { user } = useAuth();
   const { validatePromoCode, getPromoCode, recordPromoCodeUsage, isLoading: isPromoLoading } = usePromoCodes();
   const { createRefund } = usePromoCodeRefunds();
@@ -30,11 +42,10 @@ export default function Checkout() {
     city: '',
     postalCode: '',
     country: 'Madagascar',
-    phone: user?.phone || '',
+    phone: user?.phone ? normalizeMgPhoneDigits(user.phone) : '',
   });
-  const [paymentMethod, setPaymentMethod] = useState<'mobile_money' | 'cash_on_delivery'>(
-    'cash_on_delivery'
-  );
+  /** Seule méthode proposée : Mobile Money (Orange Money, Airtel Money, MVola). */
+  const paymentMethod = 'mobile_money' as const;
   const [orderNumber] = useState(`CMD-${Date.now()}`);
   const [promoCode, setPromoCode] = useState('');
   const [promoDiscount, setPromoDiscount] = useState(0);
@@ -42,6 +53,8 @@ export default function Checkout() {
   const [promoCodeId, setPromoCodeId] = useState<string | null>(null);
   const [isPostApplicationPromo, setIsPostApplicationPromo] = useState(false);
   const [deliveryInstructions, setDeliveryInstructions] = useState('');
+  const [mobileMoneyOperator, setMobileMoneyOperator] = useState<MobileMoneyOperator>('mvola');
+  const [mobileMoneyPaymentReference, setMobileMoneyPaymentReference] = useState('');
 
   const shippingCost = getSubtotal() >= 200000 ? 0 : 10000;
   const subtotal = getSubtotal();
@@ -57,6 +70,9 @@ export default function Checkout() {
         setShippingAddress((prev) => ({
           ...prev,
           ...address,
+          phone: address.phone != null ? normalizeMgPhoneDigits(String(address.phone)) : prev.phone,
+          postalCode:
+            address.postalCode != null ? normalizeMgPostalCode(String(address.postalCode)) : prev.postalCode,
         }));
         // Charger aussi les instructions de livraison si présentes
         if (address.deliveryInstructions) {
@@ -87,9 +103,6 @@ export default function Checkout() {
         setPromoCodeId(result.promoCodeId || null);
         setPromoApplied(true);
         // Ne pas modifier promoDiscount pour que le total reste inchangé
-        const discountText = result.promoCodeType === 'percentage'
-          ? `${result.promoCodeValue}%`
-          : formatPrice(result.promoCodeValue || 0);
         toast.success(
           `Code promo enregistré ! Le remboursement de ${formatPrice(result.discountAmount)} sera traité ultérieurement.`
         );
@@ -116,18 +129,33 @@ export default function Checkout() {
 
   const handleShippingSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const phoneDigits = normalizeMgPhoneDigits(shippingAddress.phone || '');
+    const postalDigits = normalizeMgPostalCode(shippingAddress.postalCode || '');
+
+    if (!isValidMgMobilePhone(phoneDigits)) {
+      toast.error('Numéro de téléphone invalide. Utilisez 10 chiffres au format 03X XX XXX XX (ex. 034 12 345 67).');
+      return;
+    }
+    if (!isValidMgPostalCodeOptional(postalDigits)) {
+      toast.error('Code postal : uniquement des chiffres (3 à 5), ou laissez vide.');
+      return;
+    }
+
     if (
       shippingAddress.firstName &&
       shippingAddress.lastName &&
       shippingAddress.street &&
       shippingAddress.city &&
-      shippingAddress.phone
+      phoneDigits
     ) {
       // Sauvegarder l'adresse et les instructions dans localStorage
       const addressToSave = {
         ...shippingAddress,
+        phone: phoneDigits,
+        postalCode: postalDigits,
         ...(deliveryInstructions.trim() && { deliveryInstructions: deliveryInstructions.trim() }),
       };
+      setShippingAddress((prev) => ({ ...prev, phone: phoneDigits, postalCode: postalDigits }));
       localStorage.setItem('saved_shipping_address', JSON.stringify(addressToSave));
       setStep('payment');
     } else {
@@ -138,13 +166,27 @@ export default function Checkout() {
   const handlePaymentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    const phoneDigits = normalizeMgPhoneDigits(shippingAddress.phone || '');
+    const postalDigits = normalizeMgPostalCode(shippingAddress.postalCode || '');
+
+    if (!isValidMgMobilePhone(phoneDigits)) {
+      toast.error('Numéro de téléphone invalide. Format : 03X XX XXX XX (10 chiffres).');
+      setStep('shipping');
+      return;
+    }
+    if (!isValidMgPostalCodeOptional(postalDigits)) {
+      toast.error('Code postal : uniquement des chiffres (3 à 5), ou laissez vide.');
+      setStep('shipping');
+      return;
+    }
+
     // Vérifier que l'adresse est complète
     if (
       !shippingAddress.firstName ||
       !shippingAddress.lastName ||
       !shippingAddress.street ||
       !shippingAddress.city ||
-      !shippingAddress.phone
+      !phoneDigits
     ) {
       toast.error('Veuillez remplir tous les champs obligatoires de l\'adresse');
       return;
@@ -153,6 +195,12 @@ export default function Checkout() {
     // Vérifier qu'il y a des articles dans le panier
     if (items.length === 0) {
       toast.error('Votre panier est vide');
+      return;
+    }
+
+    const refTrim = mobileMoneyPaymentReference.trim();
+    if (refTrim.length < 3) {
+      toast.error('Indiquez la référence de votre paiement Mobile Money (au moins 3 caractères).');
       return;
     }
 
@@ -167,56 +215,76 @@ export default function Checkout() {
         lastName: shippingAddress.lastName!,
         street: shippingAddress.street!,
         city: shippingAddress.city!,
-        postalCode: shippingAddress.postalCode || '',
+        postalCode: postalDigits,
         country: shippingAddress.country || 'Madagascar',
-        phone: shippingAddress.phone!,
+        phone: phoneDigits,
         ...(deliveryInstructions.trim() && { deliveryInstructions: deliveryInstructions.trim() }),
       };
 
-      // Créer la commande dans Supabase
-      // Note: shippingCost est passé pour information mais n'est pas inclus dans total
-      const order = await createOrder(
-        user?.id || null,
-        items,
-        completeAddress,
-        paymentMethod,
-        subtotal,
-        shippingCost, // Conservé pour information mais non inclus dans total
-        total,
-        orderNumber,
-        promoCodeId,
-        promoDiscount > 0 ? promoDiscount : undefined
+      // Créer la commande dans Supabase (délai max 60 s pour éviter un bouton bloqué sans réponse)
+      const order = await withTimeout(
+        createOrder(
+          user?.id || null,
+          items,
+          completeAddress,
+          paymentMethod,
+          subtotal,
+          shippingCost,
+          total,
+          orderNumber,
+          promoCodeId,
+          promoDiscount > 0 ? promoDiscount : undefined,
+          {
+            operator: mobileMoneyOperator,
+            paymentReference: refTrim,
+          }
+        ),
+        60_000,
+        'Délai dépassé : la commande n’a pas pu être confirmée. Vérifiez votre connexion et réessayez.'
       );
 
-      if (!order) {
-        toast.error('Erreur lors de la création de la commande. Veuillez réessayer.');
-        return;
-      }
-
-      // Gérer le code promo selon son type
-      if (promoCodeId && order.id) {
-        if (isPostApplicationPromo) {
-          // Code à postériori : créer un remboursement en attente
-          // Le montant de réduction a été calculé mais pas appliqué au total
-          await createRefund(
-            order.id,
-            promoCodeId,
-            user?.id || null,
-            promoDiscount // Le montant calculé mais non appliqué
-          );
-        } else if (promoDiscount > 0) {
-          // Code normal : enregistrer l'utilisation normale
-          await recordPromoCodeUsage(promoCodeId, user?.id || null, order.id, promoDiscount);
+      try {
+        if (promoCodeId && order.id) {
+          if (isPostApplicationPromo) {
+            await withTimeout(
+              createRefund(
+                order.id,
+                promoCodeId,
+                user?.id || null,
+                promoDiscount
+              ),
+              45_000,
+              'Délai dépassé lors de l’enregistrement du code promo.'
+            );
+          } else if (promoDiscount > 0) {
+            await withTimeout(
+              recordPromoCodeUsage(promoCodeId, user?.id || null, order.id, promoDiscount),
+              45_000,
+              'Délai dépassé lors de l’enregistrement du code promo.'
+            );
+          }
         }
+      } catch (promoErr) {
+        console.error('Erreur code promo après commande:', promoErr);
+        toast.error(
+          formatAppError(
+            promoErr,
+            'Commande enregistrée, mais le code promo n’a pas pu être finalisé. Conservez votre numéro de commande et contactez le support si besoin.'
+          )
+        );
       }
 
-      // Vider le panier et afficher la confirmation
       clearCart();
       setStep('confirmation');
       toast.success('Commande confirmée !');
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Erreur lors de la création de la commande:', error);
-      toast.error(error.message || 'Une erreur est survenue lors de la création de la commande. Veuillez réessayer.');
+      toast.error(
+        formatAppError(
+          error,
+          'Une erreur est survenue lors de la création de la commande. Veuillez réessayer.'
+        )
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -361,27 +429,44 @@ export default function Checkout() {
                   </label>
                   <input
                     type="text"
-                    value={shippingAddress.postalCode}
+                    inputMode="numeric"
+                    autoComplete="postal-code"
+                    pattern="[0-9]*"
+                    placeholder="ex. 101"
+                    value={shippingAddress.postalCode ?? ''}
                     onChange={(e) =>
-                      setShippingAddress({ ...shippingAddress, postalCode: e.target.value })
+                      setShippingAddress({
+                        ...shippingAddress,
+                        postalCode: normalizeMgPostalCode(e.target.value),
+                      })
                     }
                     className="w-full px-4 py-2 border-2 border-neutral-support rounded-lg focus:outline-none focus:border-primary"
                   />
+                  <p className="text-xs text-text-dark/60 mt-1">Chiffres uniquement (3 à 5), optionnel</p>
                 </div>
               </div>
-              <div className="mb-4">
+                <div className="mb-4">
                 <label className="block text-sm font-medium text-text-dark mb-2">
                   Téléphone *
                 </label>
                 <input
                   type="tel"
+                  inputMode="numeric"
                   required
-                  value={shippingAddress.phone}
+                  autoComplete="tel"
+                  placeholder="034 12 345 67"
+                  value={formatMgPhoneDisplay(shippingAddress.phone || '')}
                   onChange={(e) =>
-                    setShippingAddress({ ...shippingAddress, phone: e.target.value })
+                    setShippingAddress({
+                      ...shippingAddress,
+                      phone: normalizeMgPhoneDigits(e.target.value),
+                    })
                   }
                   className="w-full px-4 py-2 border-2 border-neutral-support rounded-lg focus:outline-none focus:border-primary"
                 />
+                <p className="text-xs text-text-dark/60 mt-1">
+                  10 chiffres, format mobile : 03X XX XXX XX
+                </p>
               </div>
               <div className="mb-6">
                 <label className="block text-sm font-medium text-text-dark mb-2">Pays</label>
@@ -416,54 +501,57 @@ export default function Checkout() {
           {step === 'payment' && (
             <form onSubmit={handlePaymentSubmit} className="bg-white rounded-lg p-6 shadow-sm">
               <h2 className="text-2xl font-heading font-semibold text-text-dark mb-6">
-                Méthode de paiement
+                Paiement Mobile Money
               </h2>
-              <div className="space-y-4 mb-6">
-                <label className="flex items-center gap-3 p-4 border-2 border-neutral-support rounded-lg cursor-pointer hover:border-primary transition-colors">
-                  <input
-                    type="radio"
-                    name="payment"
-                    value="cash_on_delivery"
-                    checked={paymentMethod === 'cash_on_delivery'}
-                    onChange={(e) =>
-                      setPaymentMethod(e.target.value as 'cash_on_delivery' | 'mobile_money')
-                    }
-                    className="text-primary"
-                  />
-                  <div>
-                    <p className="font-medium text-text-dark">Paiement à la livraison</p>
-                    <p className="text-sm text-text-dark/80">
-                      Payez en espèces lors de la réception de votre commande
-                    </p>
-                  </div>
+              <p className="text-sm text-text-dark/80 mb-4">
+                Choisissez votre opérateur, effectuez le paiement du montant indiqué dans le résumé
+                vers le numéro affiché, puis saisissez la référence de transaction ci-dessous.
+              </p>
+              <fieldset className="mb-6 space-y-3">
+                <legend className="text-sm font-medium text-text-dark mb-2">Opérateur *</legend>
+                {MOBILE_MONEY_OPERATOR_IDS.map((id) => (
+                  <label
+                    key={id}
+                    className={`flex cursor-pointer items-start gap-3 rounded-lg border-2 p-4 transition-colors ${
+                      mobileMoneyOperator === id
+                        ? 'border-primary bg-primary/5'
+                        : 'border-neutral-support hover:border-primary/50'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="mobile-money-operator"
+                      value={id}
+                      checked={mobileMoneyOperator === id}
+                      onChange={() => setMobileMoneyOperator(id)}
+                      className="mt-1 text-primary"
+                    />
+                    <div>
+                      <p className="font-medium text-text-dark">{MOBILE_MONEY_OPERATORS[id].label}</p>
+                      <p className="mt-1 font-mono text-sm text-text-dark">
+                        {MOBILE_MONEY_OPERATORS[id].numberDisplay}
+                      </p>
+                    </div>
+                  </label>
+                ))}
+              </fieldset>
+              <div className="mb-6">
+                <label className="mb-2 block text-sm font-medium text-text-dark">
+                  Référence de paiement *
                 </label>
-                <label className="flex items-center gap-3 p-4 border-2 border-neutral-support rounded-lg cursor-pointer hover:border-primary transition-colors">
-                  <input
-                    type="radio"
-                    name="payment"
-                    value="mobile_money"
-                    checked={paymentMethod === 'mobile_money'}
-                    onChange={(e) =>
-                      setPaymentMethod(e.target.value as 'cash_on_delivery' | 'mobile_money')
-                    }
-                    className="text-primary"
-                  />
-                  <div>
-                    <p className="font-medium text-text-dark">Mobile Money</p>
-                    <p className="text-sm text-text-dark/80">
-                      Orange Money, Airtel Money, MVola
-                    </p>
-                  </div>
-                </label>
+                <input
+                  type="text"
+                  required
+                  autoComplete="off"
+                  value={mobileMoneyPaymentReference}
+                  onChange={(e) => setMobileMoneyPaymentReference(e.target.value)}
+                  placeholder="Référence indiquée après votre paiement"
+                  className="w-full rounded-lg border-2 border-neutral-support px-4 py-2 focus:border-primary focus:outline-none"
+                />
+                <p className="mt-1 text-xs text-text-dark/60">
+                  Indiquez la référence communiquée par votre opérateur (SMS ou application).
+                </p>
               </div>
-              {paymentMethod === 'mobile_money' && (
-                <div className="mb-6 p-4 bg-neutral-light rounded-lg">
-                  <p className="text-sm text-text-dark/80 mb-2">
-                    Vous recevrez les instructions de paiement par email après confirmation de la
-                    commande.
-                  </p>
-                </div>
-              )}
               <Button 
                 type="submit" 
                 variant="primary" 
@@ -574,19 +662,20 @@ export default function Checkout() {
               {/* Code promo */}
               {step === 'payment' && (
                 <div className="mt-4 pt-4 border-t border-neutral-support">
-                  <div className="flex gap-2">
+                  <div className="flex w-full min-w-0 flex-col gap-2 sm:flex-row sm:items-stretch">
                     <input
                       type="text"
                       value={promoCode}
                       onChange={(e) => setPromoCode(e.target.value)}
                       placeholder="Code promo"
                       disabled={promoApplied}
-                      className="flex-1 px-4 py-2 border-2 border-neutral-support rounded-lg focus:outline-none focus:border-primary disabled:opacity-50"
+                      className="w-full min-w-0 flex-1 px-4 py-2 border-2 border-neutral-support rounded-lg focus:outline-none focus:border-primary disabled:opacity-50"
                     />
                     <Button
                       variant="outline"
                       onClick={handleApplyPromo}
                       disabled={promoApplied || !promoCode.trim() || isPromoLoading}
+                      className="w-full shrink-0 sm:w-auto sm:whitespace-nowrap"
                     >
                       {isPromoLoading ? 'Vérification...' : promoApplied ? 'Appliqué' : 'Appliquer'}
                     </Button>

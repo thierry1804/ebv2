@@ -1,6 +1,8 @@
 import { useState } from 'react';
-import { Order, DatabaseOrder, CartItem, Address } from '../types';
+import { Order, DatabaseOrder, CartItem, Address, MobileMoneyOperator } from '../types';
+import { isMobileMoneyOperator } from '../config/mobileMoney';
 import { supabase } from '../lib/supabase';
+import { formatAppError } from '../utils/errors';
 
 export function useOrders() {
   const [isLoading, setIsLoading] = useState(false);
@@ -16,6 +18,11 @@ export function useOrders() {
       items: dbOrder.items as CartItem[],
       shippingAddress: dbOrder.shipping_address as Address,
       paymentMethod: (dbOrder.payment_method as 'mobile_money' | 'cash_on_delivery') || 'cash_on_delivery',
+      mobileMoneyOperator:
+        dbOrder.mobile_money_operator && isMobileMoneyOperator(dbOrder.mobile_money_operator)
+          ? dbOrder.mobile_money_operator
+          : undefined,
+      mobileMoneyPaymentReference: dbOrder.mobile_money_payment_reference?.trim() || undefined,
       subtotal: parseFloat(dbOrder.subtotal.toString()),
       shipping: parseFloat(dbOrder.shipping.toString()),
       total: parseFloat(dbOrder.total.toString()),
@@ -40,14 +47,15 @@ export function useOrders() {
     total: number,
     orderNumber: string,
     promoCodeId?: string | null,
-    promoDiscount?: number
-  ): Promise<Order | null> => {
+    promoDiscount?: number,
+    mobileMoney?: { operator: MobileMoneyOperator; paymentReference: string }
+  ): Promise<Order> => {
     try {
       setIsLoading(true);
       setError(null);
 
       // Préparer les données pour Supabase
-      const orderData = {
+      const orderData: Record<string, unknown> = {
         user_id: userId,
         order_number: orderNumber,
         status: 'pending' as const,
@@ -60,6 +68,10 @@ export function useOrders() {
         promo_code_id: promoCodeId || null,
         promo_discount: promoDiscount || null,
       };
+      if (paymentMethod === 'mobile_money' && mobileMoney) {
+        orderData.mobile_money_operator = mobileMoney.operator;
+        orderData.mobile_money_payment_reference = mobileMoney.paymentReference.trim();
+      }
 
       const { data, error: supabaseError } = await supabase
         .from('orders')
@@ -69,20 +81,26 @@ export function useOrders() {
 
       if (supabaseError) {
         console.error('Erreur lors de la création de la commande:', supabaseError);
-        setError(supabaseError.message || 'Erreur lors de la création de la commande');
-        return null;
+        const msg = formatAppError(
+          supabaseError,
+          supabaseError.message || 'Erreur lors de la création de la commande'
+        );
+        setError(msg);
+        throw new Error(msg);
       }
 
       if (!data) {
-        setError('Aucune donnée retournée lors de la création de la commande');
-        return null;
+        const msg = 'Aucune donnée retournée lors de la création de la commande';
+        setError(msg);
+        throw new Error(msg);
       }
 
       return adaptDatabaseOrderToOrder(data as DatabaseOrder);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Erreur lors de la création de la commande:', err);
-      setError(err.message || 'Erreur lors de la création de la commande');
-      return null;
+      const msg = formatAppError(err, 'Erreur lors de la création de la commande');
+      setError(msg);
+      throw err instanceof Error ? err : new Error(msg);
     } finally {
       setIsLoading(false);
     }

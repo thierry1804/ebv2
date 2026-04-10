@@ -40,7 +40,7 @@ export default function AdminDashboard() {
     // Charger les stats une seule fois au montage
     // Ne pas dépendre de adminUser pour éviter les rechargements inutiles
     loadStats();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);  
 
   const loadStats = async () => {
     try {
@@ -48,29 +48,33 @@ export default function AdminDashboard() {
 
       const [usersResult, articlesResult, productsResult, ordersResult] = await Promise.allSettled([
         withTimeout(
-          supabase.from('user_profiles').select('*', { count: 'exact', head: true }),
+          (async () =>
+            await supabase.from('user_profiles').select('*', { count: 'exact', head: true }))(),
           ADMIN_DASHBOARD_TIMEOUT_MS,
           'user_profiles count',
         ),
         withTimeout(
-          supabase.from('blog_posts').select('*', { count: 'exact', head: true }),
+          (async () =>
+            await supabase.from('blog_posts').select('*', { count: 'exact', head: true }))(),
           ADMIN_DASHBOARD_TIMEOUT_MS,
           'blog_posts count',
         ),
         withTimeout(
-          supabase.from('products').select('*', { count: 'exact', head: true }),
+          (async () =>
+            await supabase.from('products').select('*', { count: 'exact', head: true }))(),
           ADMIN_DASHBOARD_TIMEOUT_MS,
           'products count',
         ),
         withTimeout(
-          supabase.from('orders').select('*', { count: 'exact', head: true }),
+          (async () =>
+            await supabase.from('orders').select('*', { count: 'exact', head: true }))(),
           ADMIN_DASHBOARD_TIMEOUT_MS,
           'orders count',
         ),
       ]);
 
       const unwrapCount = (
-        result: PromiseSettledResult<{ count: number | null; error: any }>,
+        result: PromiseSettledResult<unknown>,
         label: string,
       ): { count: number; hasError: boolean } => {
         if (result.status === 'rejected') {
@@ -82,7 +86,10 @@ export default function AdminDashboard() {
           return { count: 0, hasError: true };
         }
 
-        const { count, error } = result.value;
+        const { count, error } = result.value as {
+          count: number | null;
+          error: { code?: string; message?: string } | null;
+        };
         if (error) {
           if (error.code === 'PGRST116') {
             return { count: 0, hasError: false };

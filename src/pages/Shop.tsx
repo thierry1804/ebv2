@@ -4,6 +4,7 @@ import { ProductCard } from '../components/product/ProductCard';
 import { Button } from '../components/ui/Button';
 import { useCategories } from '../hooks/useCategories';
 import { useProducts } from '../hooks/useProducts';
+import { sortCategoriesByProductCount } from '../lib/sortCategoriesByProductCount';
 import { SEO } from '../components/seo/SEO';
 import { normalizeColors, ColorWithHex } from '../config/colors';
 import { ModernSpinner } from '../components/ui/Loading';
@@ -13,6 +14,10 @@ import { X } from 'lucide-react';
 export default function Shop() {
   const { categories } = useCategories();
   const { products, isLoading } = useProducts();
+  const categoriesForDisplay = useMemo(
+    () => sortCategoriesByProductCount(categories, products),
+    [categories, products]
+  );
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const [showFilters, setShowFilters] = useState(false);
@@ -184,7 +189,7 @@ export default function Shop() {
             />
             <span>Toutes</span>
           </label>
-          {categories.map((cat) => (
+          {categoriesForDisplay.map((cat) => (
             <label key={cat.id} className="flex items-center gap-2 cursor-pointer">
               <input
                 type="radio"

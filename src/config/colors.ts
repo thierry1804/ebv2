@@ -82,7 +82,7 @@ export function normalizeColors(colors: string[] | ColorWithHex[]): ColorWithHex
               : getColorHex(parsed.name)
           };
         }
-      } catch (e) {
+      } catch (_e) {
         // Ce n'est pas du JSON, c'est juste un nom de couleur
       }
       // C'est juste un nom de couleur (ancien format)

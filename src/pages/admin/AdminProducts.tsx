@@ -221,7 +221,6 @@ export default function AdminProducts() {
     brand: '',
     hasVariants: false,
   });
-  const [isUploading, setIsUploading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveStep, setSaveStep] = useState<'idle' | 'database' | 'reload'>('idle');
   const [fieldErrors, setFieldErrors] = useState<ProductFormErrors>({});
@@ -234,7 +233,6 @@ export default function AdminProducts() {
   const [isColorModalOpen, setIsColorModalOpen] = useState(false);
   /** Noms des couleurs prédéfinies cochées dans la modal (ajout groupé). */
   const [modalPresetSelection, setModalPresetSelection] = useState<Set<string>>(new Set());
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const customColorNameInputRef = useRef<HTMLInputElement>(null);
   
   // États pour la gestion des variantes
@@ -430,7 +428,7 @@ export default function AdminProducts() {
     hasLoadedProductsRef.current = true;
     // Charger les produits une seule fois au montage
     loadProducts();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);  
 
   const loadProducts = async () => {
     const env = getSupabaseEnvDebug();
@@ -443,10 +441,11 @@ export default function AdminProducts() {
     try {
       setLoadError(null);
       const { data, error } = await withTimeout(
-        supabase
-          .from('products')
-          .select('*')
-          .order('created_at', { ascending: false }),
+        (async () =>
+          await supabase
+            .from('products')
+            .select('*')
+            .order('created_at', { ascending: false }))(),
         ADMIN_PRODUCTS_TIMEOUT_MS,
         'products list',
       );
@@ -466,7 +465,7 @@ export default function AdminProducts() {
             if (typeof p.colors === 'string') {
               try {
                 parsedColors = JSON.parse(p.colors);
-              } catch (e) {
+              } catch (_e) {
                 // Si ce n'est pas du JSON valide, traiter comme une liste séparée par des virgules
                 parsedColors = p.colors.split(',').map((c: string) => c.trim()).filter(Boolean);
               }
@@ -679,7 +678,7 @@ export default function AdminProducts() {
               custom: !predefined
             };
           }
-        } catch (e) {
+        } catch (_e) {
           // Ce n'est pas du JSON, c'est juste un nom de couleur
         }
         // Ancien format : juste le nom
@@ -993,70 +992,6 @@ export default function AdminProducts() {
     }
   };
 
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-
-    setIsUploading(true);
-    const uploadedUrls: string[] = [];
-
-    try {
-      // Uploader tous les fichiers
-      const uploadPromises = Array.from(files).map((file) => handleImageUpload(file));
-      const results = await Promise.all(uploadPromises);
-
-      // Collecter les URLs réussies
-      results.forEach((url) => {
-        if (url) {
-          uploadedUrls.push(url);
-        }
-      });
-
-      // Ajouter toutes les images en une seule fois
-      if (uploadedUrls.length > 0) {
-        setFormData((prev) => ({
-          ...prev,
-          images: [...prev.images, ...uploadedUrls],
-        }));
-        toast.success(`${uploadedUrls.length} image(s) uploadée(s) avec succès`);
-
-        // Détection automatique des couleurs depuis les images uploadées
-        detectColorsFromImages(uploadedUrls)
-          .then((detected) => {
-            if (detected.length === 0) return;
-            setSelectedColors((prev) => {
-              const newColors = detected.filter(
-                (d) => !prev.some((p) => p.name === d.name),
-              );
-              if (newColors.length === 0) return prev;
-              toast.success(
-                `Couleur(s) détectée(s) : ${newColors.map((c) => c.name).join(', ')}`,
-              );
-              return [
-                ...prev,
-                ...newColors.map((c) => ({ name: c.name, hex: c.hex, custom: false })),
-              ];
-            });
-          })
-          .catch(() => { /* silencieux si la détection échoue */ });
-      } else if (files.length > 0) {
-        toast.error(
-          "Aucune image n'a été ajoutée. Vérifiez les messages d'erreur ci-dessus ou la configuration."
-        );
-      }
-
-      // Réinitialiser l'input pour permettre de sélectionner les mêmes fichiers à nouveau
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
-    } catch (error: any) {
-      console.error('Erreur lors de l\'upload multiple:', error);
-      toast.error('Erreur lors de l\'upload des images');
-    } finally {
-      setIsUploading(false);
-    }
-  };
-
   const deleteImageFromStorage = async (imageUrl: string, bucket: string): Promise<boolean> => {
     try {
       // Extraire le chemin du fichier depuis l'URL publique Supabase
@@ -1085,64 +1020,6 @@ export default function AdminProducts() {
     } catch (error) {
       console.error('Erreur lors de la suppression du fichier:', error);
       return false;
-    }
-  };
-
-  const handleRemoveImage = async (index: number) => {
-    const imageToRemove = formData.images[index];
-
-    if (imageToRemove && isImageApiUrl(imageToRemove)) {
-      const deleted = await deleteImageFromImageApi(imageToRemove);
-      if (deleted) {
-        toast.success('Image supprimée du serveur');
-      } else {
-        toast.error('Erreur lors de la suppression de l\'image sur l\'API');
-      }
-    } else if (imageToRemove && imageToRemove.includes('supabase.co/storage')) {
-      const deleted = await deleteImageFromStorage(imageToRemove, 'products');
-      if (deleted) {
-        toast.success('Image supprimée du stockage');
-      } else {
-        toast.error('Erreur lors de la suppression de l\'image du stockage');
-      }
-    }
-
-    const newImages = formData.images.filter((_, i) => i !== index);
-    setFormData({ ...formData, images: newImages });
-
-    // Re-détecter les couleurs depuis les images restantes
-    // et retirer celles qui ne correspondent plus (uniquement les non-custom)
-    if (newImages.length > 0) {
-      detectColorsFromImages(newImages)
-        .then((detected) => {
-          const detectedNames = new Set(detected.map((d) => d.name));
-          setSelectedColors((prev) => {
-            const filtered = prev.filter(
-              (c) => c.custom || detectedNames.has(c.name),
-            );
-            const removed = prev.filter(
-              (c) => !c.custom && !detectedNames.has(c.name),
-            );
-            if (removed.length > 0) {
-              toast.success(
-                `Couleur(s) retirée(s) : ${removed.map((c) => c.name).join(', ')}`,
-              );
-            }
-            return filtered;
-          });
-        })
-        .catch(() => {});
-    } else {
-      // Plus d'images → retirer toutes les couleurs auto-détectées
-      setSelectedColors((prev) => {
-        const autoColors = prev.filter((c) => !c.custom);
-        if (autoColors.length > 0) {
-          toast.success(
-            `Couleur(s) retirée(s) : ${autoColors.map((c) => c.name).join(', ')}`,
-          );
-        }
-        return prev.filter((c) => c.custom);
-      });
     }
   };
 

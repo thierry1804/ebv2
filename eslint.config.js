@@ -18,6 +18,19 @@ export default tseslint.config(
       'react-refresh': reactRefresh,
     },
     rules: {
+      // Évite le crash ESLint 9.15+ avec l’extension (context.options vide → base rule).
+      // Réactiver après mise à jour de `typescript-eslint` (ex. ≥ 8.14).
+      '@typescript-eslint/no-unused-expressions': 'off',
+      // Migration progressive : les `any` restent visibles sans faire échouer la CI.
+      '@typescript-eslint/no-explicit-any': 'warn',
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        {
+          argsIgnorePattern: '^_',
+          varsIgnorePattern: '^_',
+          caughtErrorsIgnorePattern: '^_',
+        },
+      ],
       ...reactHooks.configs.recommended.rules,
       'react-refresh/only-export-components': [
         'warn',

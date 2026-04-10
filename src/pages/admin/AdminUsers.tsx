@@ -33,7 +33,7 @@ export default function AdminUsers() {
       setIsLoading(false);
       setError('Vous devez être connecté pour voir les utilisateurs');
     }
-  }, [isAuthenticated]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isAuthenticated]);  
 
   const loadUsers = async () => {
     try {
@@ -87,7 +87,7 @@ export default function AdminUsers() {
       // Récupérer toutes les adresses pour tous les utilisateurs
       const userIds = filteredUsers.map((u: any) => u.id);
       
-      let addressesMap: Record<string, string | undefined> = {};
+      const addressesMap: Record<string, string | undefined> = {};
       
       if (userIds.length > 0) {
         const { data: addressesData, error: addressesError } = await supabase

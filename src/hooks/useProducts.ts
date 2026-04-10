@@ -40,7 +40,7 @@ export function useProducts() {
             if (typeof p.colors === 'string') {
               try {
                 parsedColors = JSON.parse(p.colors);
-              } catch (e) {
+              } catch (_e) {
                 // Si ce n'est pas du JSON valide, traiter comme une liste séparée par des virgules
                 parsedColors = p.colors.split(',').map((c: string) => c.trim()).filter(Boolean);
               }
@@ -69,7 +69,7 @@ export function useProducts() {
                           name: parsed.name || 'Couleur inconnue',
                           hex: (parsed.hex && /^#[0-9A-F]{6}$/i.test(parsed.hex)) ? parsed.hex.toUpperCase() : '#CCCCCC'
                         };
-                      } catch (e) {
+                      } catch (_e) {
                         return {
                           name: c,
                           hex: getColorHex(c)
@@ -80,7 +80,7 @@ export function useProducts() {
                     // Ancien format : tableau de strings simples
                     colors = parsedColors;
                   }
-                } catch (e) {
+                } catch (_e) {
                   // Ancien format : tableau de strings simples
                   colors = parsedColors;
                 }

@@ -75,3 +75,21 @@ export function formatAppError(error: unknown, fallback: string): string {
   if (extracted) return extracted;
   return fallback;
 }
+
+/** Rejette si `promise` ne se termine pas dans les `ms` (évite un bouton bloqué indéfiniment). */
+export function withTimeout<T>(promise: Promise<T>, ms: number, timeoutMessage: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(timeoutMessage));
+    }, ms);
+    promise
+      .then((value) => {
+        clearTimeout(timer);
+        resolve(value);
+      })
+      .catch((err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+  });
+}

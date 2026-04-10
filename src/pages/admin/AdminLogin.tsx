@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAdminAuth } from '../../context/AdminAuthContext';
 import { Button } from '../../components/ui/Button';
-import toast from 'react-hot-toast';
 
 export default function AdminLogin() {
   const [email, setEmail] = useState('');

@@ -11,8 +11,7 @@ import { getColorHex, normalizeColors } from '../config/colors';
 
 export default function Cart() {
   const confirm = useConfirm();
-  const { items, removeItem, updateQuantity, getSubtotal, getTotal, clearCart } = useCart();
-  const shippingCost = getSubtotal() >= 200000 ? 0 : 10000;
+  const { items, removeItem, updateQuantity, getSubtotal, clearCart } = useCart();
 
   if (items.length === 0) {
     return (

@@ -24,7 +24,7 @@ export function StarRating({
     }
   };
 
-  const handleMouseEnter = (index: number) => {
+  const handleMouseEnter = (_index: number) => {
     if (interactive) {
       // Optionnel : effet visuel au survol
     }

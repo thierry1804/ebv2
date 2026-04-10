@@ -127,18 +127,18 @@ export function useProductVariants(productId: string | null): UseProductVariants
       // Transformer les variantes
       const transformedVariants: ProductVariant[] = (variantsData || []).map(v => {
         const selectedOptions: SelectedVariantOption[] = (v.product_variant_options || [])
-          .map((pvo: any) => {
+          .flatMap((pvo: any) => {
             const lookup = valueMap.get(pvo.option_value_id);
-            if (!lookup) return null;
-            return {
+            if (!lookup) return [];
+            const opt: SelectedVariantOption = {
               optionId: lookup.option.id,
               optionName: lookup.option.name,
               valueId: lookup.value.id,
               value: lookup.value.value,
-              hexColor: lookup.value.hexColor
+              ...(lookup.value.hexColor ? { hexColor: lookup.value.hexColor } : {}),
             };
+            return [opt];
           })
-          .filter((o): o is SelectedVariantOption => o !== null)
           .sort((a, b) => {
             const optA = transformedOptions.find(o => o.id === a.optionId);
             const optB = transformedOptions.find(o => o.id === b.optionId);
@@ -493,7 +493,7 @@ export function useProductVariants(productId: string | null): UseProductVariants
   // Générer automatiquement toutes les variantes
   const generateAllVariants = useCallback(async (
     prodId: string,
-    basePrice: number
+    _basePrice: number
   ): Promise<boolean> => {
     try {
       const combinations = generateCombinations();
@@ -527,7 +527,7 @@ export function useProductVariants(productId: string | null): UseProductVariants
           stock: '0',
           weight: '',
           isAvailable: true,
-          imageUrl: '',
+          images: [],
           options: combo.options.reduce((acc, o) => {
             acc[o.optionId] = o.valueId;
             return acc;
@@ -541,7 +541,7 @@ export function useProductVariants(productId: string | null): UseProductVariants
       if (created > 0) {
         toast.success(`${created} variante(s) créée(s)`);
       } else {
-        toast.info('Toutes les variantes existent déjà');
+        toast('Toutes les variantes existent déjà', { icon: 'ℹ️' });
       }
       
       return true;

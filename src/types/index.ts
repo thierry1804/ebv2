@@ -73,12 +73,18 @@ export interface Address {
   isDefault?: boolean;
 }
 
+export type MobileMoneyOperator = 'mvola' | 'orange' | 'airtel';
+
 export interface Order {
   id: string;
   userId: string;
   items: CartItem[];
   shippingAddress: Address;
   paymentMethod: 'mobile_money' | 'cash_on_delivery';
+  /** Renseigné si paiement Mobile Money (choix client). */
+  mobileMoneyOperator?: MobileMoneyOperator;
+  /** Référence de transaction saisie par le client. */
+  mobileMoneyPaymentReference?: string;
   subtotal: number;
   shipping: number;
   total: number;
@@ -98,6 +104,8 @@ export interface DatabaseOrder {
   shipping: number;
   total: number;
   payment_method: string | null;
+  mobile_money_operator?: string | null;
+  mobile_money_payment_reference?: string | null;
   shipping_address: any; // JSONB
   items: any; // JSONB
   promo_code_id: string | null;

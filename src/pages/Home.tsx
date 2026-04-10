@@ -8,11 +8,23 @@ import { HeroSliderConfig, SectionConfig, InstagramConfig, NewsletterConfig, Fea
 import { useCategories } from '../hooks/useCategories';
 import { useProducts } from '../hooks/useProducts';
 import { HeroSlider } from '../components/hero/HeroSlider';
+import { CategoryKiabiGrid } from '../components/home/CategoryKiabiGrid';
 import { SEO } from '../components/seo/SEO';
+import {
+  buildProductCountByCategoryMap,
+  sortCategoriesByProductCount,
+} from '../lib/sortCategoriesByProductCount';
 
 export default function Home() {
   const { categories } = useCategories();
   const { products } = useProducts();
+
+  const productCountByCategory = useMemo(() => buildProductCountByCategoryMap(products), [products]);
+
+  const categoriesForDisplay = useMemo(
+    () => sortCategoriesByProductCount(categories, products),
+    [categories, products]
+  );
   
   // Calcul des produits avec priorités pour éviter les doublons
   // Priorité : Soldes > Nouvelle arrivée > Best seller
@@ -47,7 +59,7 @@ export default function Home() {
   const [bestSellersConfig, setBestSellersConfig] = useState<SectionConfig | null>(null);
   const [salesConfig, setSalesConfig] = useState<SectionConfig | null>(null);
   const [instagramConfig, setInstagramConfig] = useState<InstagramConfig | null>(null);
-  const [newsletterConfig, setNewsletterConfig] = useState<NewsletterConfig | null>(null);
+  const [, setNewsletterConfig] = useState<NewsletterConfig | null>(null);
   const [featuredContentConfig, setFeaturedContentConfig] = useState<FeaturedContentConfig | null>(null);
 
   // Valeurs par défaut
@@ -183,40 +195,19 @@ export default function Home() {
       </div>
 
       {/* Catégories */}
-      {categoriesConfig && categoriesConfig.isVisible !== false && categories.length > 0 && (
-        <section className="container mx-auto px-4 mt-40">
-          <h2 className="text-3xl font-heading font-bold text-text-dark mb-8 text-center">
-            {categoriesConfig?.title || 'Nos Catégories'}
+      {categoriesConfig && categoriesConfig.isVisible !== false && categoriesForDisplay.length > 0 && (
+        <section
+          className="mx-auto mt-40 w-full max-w-screen-2xl px-3 sm:px-5 md:px-6 lg:px-8"
+          aria-labelledby="home-categories-heading"
+        >
+          <h2 id="home-categories-heading" className="sr-only">
+            {categoriesConfig?.title || 'Catégories'}
           </h2>
-          <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${Math.min(categories.length, 6)}, 1fr)` }}>
-            {categories.map((category) => (
-              <Link
-                key={category.id}
-                to={`/boutique?category=${category.slug}`}
-                className="group relative aspect-square overflow-hidden rounded-lg shadow-sm hover:shadow-lg transition-all duration-300 bg-neutral-support"
-              >
-                <div className="absolute inset-0 bg-gradient-to-br from-neutral-support to-neutral-support/50 animate-pulse" aria-hidden="true" />
-                <img
-                  src={category.image}
-                  alt={category.name}
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 relative z-10"
-                  loading="lazy"
-                  decoding="async"
-                  onLoad={(e) => {
-                    const placeholder = e.currentTarget.parentElement?.querySelector('.animate-pulse');
-                    if (placeholder) {
-                      placeholder.classList.add('opacity-0', 'transition-opacity', 'duration-300');
-                    }
-                  }}
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end">
-                  <h3 className="text-white font-heading font-semibold p-4 text-lg">
-                    {category.name}
-                  </h3>
-                </div>
-              </Link>
-            ))}
-          </div>
+          <CategoryKiabiGrid
+            categories={categoriesForDisplay}
+            productCountByCategory={productCountByCategory}
+            products={products}
+          />
         </section>
       )}
 

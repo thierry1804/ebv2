@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Address } from '../types';
 import { supabase } from '../lib/supabase';
 

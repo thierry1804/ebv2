@@ -1,9 +1,8 @@
 import { useEffect, useState, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import { LandingPageConfig, HeroSliderConfig, HeaderLogoConfig, PromotionalBannerConfig, SectionConfig, InstagramConfig, NewsletterConfig, FeaturedContentConfig, SocialMediaConfig } from '../../types';
-import { Save, Edit, Eye, EyeOff, Plus, Trash2, Image as ImageIcon, Upload, X } from 'lucide-react';
+import { Save, Edit, Eye, EyeOff, Plus, Trash2, Upload, X } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
-import { Modal } from '../../components/ui/Modal';
 import toast from 'react-hot-toast';
 import { convertToWebP } from '../../utils/imageUtils';
 import { useAdminAuth } from '../../context/AdminAuthContext';

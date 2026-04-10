@@ -35,7 +35,7 @@ export default function AdminArticles() {
   useEffect(() => {
     // Charger les articles une seule fois au montage
     loadArticles();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);  
 
   const loadArticles = async () => {
     try {

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Search, User, Heart, ShoppingCart, Menu, X } from 'lucide-react';
 import { useCart } from '../../context/CartContext';
@@ -10,9 +10,16 @@ import { Button } from '../ui/Button';
 import { supabase } from '../../lib/supabase';
 import { HeaderLogoConfig, PromotionalBannerConfig } from '../../types';
 import { useCategories } from '../../hooks/useCategories';
+import { useProducts } from '../../hooks/useProducts';
+import { sortCategoriesByProductCount } from '../../lib/sortCategoriesByProductCount';
 
 export function Header() {
   const { categories } = useCategories();
+  const { products } = useProducts();
+  const categoriesForDisplay = useMemo(
+    () => sortCategoriesByProductCount(categories, products),
+    [categories, products]
+  );
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isMegaMenuOpen, setIsMegaMenuOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -145,7 +152,7 @@ export function Header() {
                 {isMegaMenuOpen && (
                   <div className="absolute top-full left-1/2 -translate-x-1/2 mt-4 w-screen max-w-7xl bg-white shadow-2xl rounded-2xl p-8 border border-gray-100 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
                     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-                      {categories.map((category) => (
+                      {categoriesForDisplay.map((category) => (
                         <Link
                           key={category.id}
                           to={`/boutique?category=${category.slug}`}
@@ -189,7 +196,7 @@ export function Header() {
                         </Link>
                       ))}
                     </div>
-                    {categories.length === 0 && (
+                    {categoriesForDisplay.length === 0 && (
                       <div className="text-center py-8 text-gray-500">
                         Aucune catégorie disponible
                       </div>

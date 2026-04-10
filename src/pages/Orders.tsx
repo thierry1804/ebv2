@@ -5,6 +5,7 @@ import { Button } from '../components/ui/Button';
 import { Loading } from '../components/ui/Loading';
 import { formatPrice } from '../utils/formatters';
 import { Order } from '../types';
+import { formatMobileMoneyPaymentSummary } from '../config/mobileMoney';
 import { Link, useNavigate } from 'react-router-dom';
 import { normalizeImageApiUrl } from '../lib/imageApi';
 
@@ -163,7 +164,10 @@ export default function Orders() {
                     <p className="text-xs text-text-dark/60">
                       {order.paymentMethod === 'cash_on_delivery'
                         ? 'Paiement à la livraison'
-                        : 'Mobile Money'}
+                        : formatMobileMoneyPaymentSummary(
+                            order.mobileMoneyOperator,
+                            order.mobileMoneyPaymentReference
+                          )}
                     </p>
                   </div>
                 </div>

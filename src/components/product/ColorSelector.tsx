@@ -1,5 +1,5 @@
 import { cn } from '../../utils/cn';
-import { getColorHex, getColorHexValue, normalizeColors, ColorWithHex } from '../../config/colors';
+import { normalizeColors, ColorWithHex } from '../../config/colors';
 
 interface ColorSelectorProps {
   colors: string[] | ColorWithHex[];

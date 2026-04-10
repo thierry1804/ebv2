@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Search, Eye, Package, ChevronDown, ChevronUp } from 'lucide-react';
 import { Order, DatabaseOrder, CartItem, Address, PromoCodeRefund } from '../../types';
+import { isMobileMoneyOperator } from '../../config/mobileMoney';
 import { formatPrice } from '../../utils/formatters';
 import { Modal } from '../../components/ui/Modal';
 import { Button } from '../../components/ui/Button';
@@ -11,6 +12,7 @@ import { normalizeImageApiUrl } from '../../lib/imageApi';
 import { PageLoading } from '../../components/ui/PageLoading';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { formatAppError } from '../../utils/errors';
+import { formatMobileMoneyPaymentSummary, MOBILE_MONEY_OPERATORS } from '../../config/mobileMoney';
 
 export default function AdminOrders() {
   const confirm = useConfirm();
@@ -59,6 +61,11 @@ export default function AdminOrders() {
       items: dbOrder.items as CartItem[],
       shippingAddress: dbOrder.shipping_address as Address,
       paymentMethod: (dbOrder.payment_method as 'mobile_money' | 'cash_on_delivery') || 'cash_on_delivery',
+      mobileMoneyOperator:
+        dbOrder.mobile_money_operator && isMobileMoneyOperator(dbOrder.mobile_money_operator)
+          ? dbOrder.mobile_money_operator
+          : undefined,
+      mobileMoneyPaymentReference: dbOrder.mobile_money_payment_reference?.trim() || undefined,
       subtotal: parseFloat(dbOrder.subtotal.toString()),
       shipping: parseFloat(dbOrder.shipping.toString()),
       total: parseFloat(dbOrder.total.toString()),
@@ -279,7 +286,10 @@ export default function AdminOrders() {
                         <strong>Paiement:</strong>{' '}
                         {order.paymentMethod === 'cash_on_delivery'
                           ? 'À la livraison'
-                          : 'Mobile Money'}
+                          : formatMobileMoneyPaymentSummary(
+                              order.mobileMoneyOperator,
+                              order.mobileMoneyPaymentReference
+                            )}
                       </div>
                     </div>
                   </div>
@@ -445,11 +455,38 @@ export default function AdminOrders() {
                   <p className="text-text-dark">
                     {selectedOrder.paymentMethod === 'cash_on_delivery'
                       ? 'À la livraison'
-                      : 'Mobile Money'}
+                      : formatMobileMoneyPaymentSummary(
+                          selectedOrder.mobileMoneyOperator,
+                          selectedOrder.mobileMoneyPaymentReference
+                        )}
                   </p>
                 </div>
               </div>
             </div>
+
+            {selectedOrder.paymentMethod === 'mobile_money' && selectedOrder.mobileMoneyOperator && (
+              <div>
+                <h3 className="font-semibold text-text-dark mb-3">Détails Mobile Money</h3>
+                <div className="rounded-lg bg-gray-50 p-4 text-sm space-y-2">
+                  <p>
+                    <strong className="text-gray-600">Opérateur :</strong>{' '}
+                    {MOBILE_MONEY_OPERATORS[selectedOrder.mobileMoneyOperator].label}
+                  </p>
+                  <p>
+                    <strong className="text-gray-600">Numéro de versement :</strong>{' '}
+                    <span className="font-mono">
+                      {MOBILE_MONEY_OPERATORS[selectedOrder.mobileMoneyOperator].numberDisplay}
+                    </span>
+                  </p>
+                  <p>
+                    <strong className="text-gray-600">Référence client :</strong>{' '}
+                    <span className="font-mono">
+                      {selectedOrder.mobileMoneyPaymentReference || '—'}
+                    </span>
+                  </p>
+                </div>
+              </div>
+            )}
 
             {/* Adresse de livraison */}
             <div>
