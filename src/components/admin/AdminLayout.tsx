@@ -17,6 +17,7 @@ import {
   Package,
   Wrench,
   Image,
+  Mail,
 } from 'lucide-react';
 
 interface AdminLayoutProps {
@@ -45,6 +46,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
     { path: '/admin/contenu', icon: Settings, label: 'Contenu du site' },
     { path: '/admin/landing-page', icon: Layout, label: 'Landing Page' },
     { path: '/admin/galerie', icon: Image, label: 'Galerie' },
+    { path: '/admin/newsletter', icon: Mail, label: 'Newsletter' },
     { path: '/admin/parametres-site', icon: Wrench, label: 'Paramètres site' },
   ];
 

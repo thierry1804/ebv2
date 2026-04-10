@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Facebook, Instagram, Twitter } from 'lucide-react';
-import { Button } from '../ui/Button';
+import { NewsletterSubscribeForm } from '../newsletter/NewsletterSubscribeForm';
 import { supabase } from '../../lib/supabase';
 import { SocialMediaConfig } from '../../types';
 
@@ -179,20 +179,13 @@ export function Footer() {
 
           {/* Newsletter */}
           <div>
-            <h3 className="font-heading font-semibold text-lg mb-4 text-secondary">Newsletter</h3>
-            <p className="text-sm text-text-dark/80 mb-4">
-              Inscrivez-vous pour recevoir nos offres exclusives et nouveautés.
-            </p>
-            <form className="space-y-2">
-              <input
-                type="email"
-                placeholder="Votre email"
-                className="w-full px-4 py-2 border-2 border-neutral-support rounded-lg focus:outline-none focus:border-primary text-sm"
-              />
-              <Button variant="primary" className="w-full">
-                S'abonner
-              </Button>
-            </form>
+            <NewsletterSubscribeForm
+              source="footer"
+              title="Newsletter"
+              description="Inscrivez-vous pour recevoir nos offres exclusives et nouveautés."
+              placeholder="Votre email"
+              buttonText="S'abonner"
+            />
           </div>
         </div>
 

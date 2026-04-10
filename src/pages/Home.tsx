@@ -10,6 +10,7 @@ import { useProducts } from '../hooks/useProducts';
 import { HeroSlider } from '../components/hero/HeroSlider';
 import { CategoryKiabiGrid } from '../components/home/CategoryKiabiGrid';
 import { SEO } from '../components/seo/SEO';
+import { NewsletterSubscribeForm } from '../components/newsletter/NewsletterSubscribeForm';
 import {
   buildProductCountByCategoryMap,
   sortCategoriesByProductCount,
@@ -59,7 +60,7 @@ export default function Home() {
   const [bestSellersConfig, setBestSellersConfig] = useState<SectionConfig | null>(null);
   const [salesConfig, setSalesConfig] = useState<SectionConfig | null>(null);
   const [instagramConfig, setInstagramConfig] = useState<InstagramConfig | null>(null);
-  const [, setNewsletterConfig] = useState<NewsletterConfig | null>(null);
+  const [newsletterConfig, setNewsletterConfig] = useState<NewsletterConfig | null>(null);
   const [featuredContentConfig, setFeaturedContentConfig] = useState<FeaturedContentConfig | null>(null);
 
   // Valeurs par défaut
@@ -353,6 +354,27 @@ export default function Home() {
                 )}
               </div>
             </div>
+          </div>
+        </section>
+      )}
+
+      {/* Newsletter */}
+      {newsletterConfig && newsletterConfig.isVisible !== false && (
+        <section className="container mx-auto px-4" aria-labelledby="home-newsletter-heading">
+          <div className="max-w-xl mx-auto rounded-2xl border-2 border-neutral-support bg-neutral-light/80 p-8 md:p-10">
+            <h2 id="home-newsletter-heading" className="sr-only">
+              {newsletterConfig.title || 'Newsletter'}
+            </h2>
+            <NewsletterSubscribeForm
+              source="home"
+              title={newsletterConfig.title || 'Newsletter'}
+              description={
+                newsletterConfig.description ||
+                'Inscrivez-vous pour recevoir nos offres et nouveautés.'
+              }
+              placeholder={newsletterConfig.placeholder || 'Votre email'}
+              buttonText={newsletterConfig.buttonText || "S'abonner"}
+            />
           </div>
         </section>
       )}

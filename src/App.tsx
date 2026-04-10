@@ -27,6 +27,7 @@ const About = lazy(() => import('./pages/About'));
 const Contact = lazy(() => import('./pages/Contact'));
 const Wishlist = lazy(() => import('./pages/Wishlist'));
 const Legal = lazy(() => import('./pages/Legal'));
+const NewsletterUnsubscribe = lazy(() => import('./pages/NewsletterUnsubscribe'));
 
 // Lazy load des pages admin
 const AdminLogin = lazy(() => import('./pages/admin/AdminLogin'));
@@ -42,6 +43,7 @@ const AdminPromoCodes = lazy(() => import('./pages/admin/AdminPromoCodes'));
 const AdminOrders = lazy(() => import('./pages/admin/AdminOrders'));
 const AdminSiteSettings = lazy(() => import('./pages/admin/AdminSiteSettings'));
 const AdminGallery = lazy(() => import('./pages/admin/AdminGallery'));
+const AdminNewsletter = lazy(() => import('./pages/admin/AdminNewsletter'));
 
 // Composant de chargement (pour les pages lazy-load)
 const LoadingFallback = () => <PageLoading />;
@@ -81,6 +83,7 @@ function App() {
                           <Route path="/cgv" element={<Legal />} />
                           <Route path="/confidentialite" element={<Legal />} />
                           <Route path="/retours" element={<Legal />} />
+                          <Route path="/newsletter/desabonner" element={<NewsletterUnsubscribe />} />
                         </Routes>
                       </Suspense>
                     </Layout>
@@ -121,6 +124,7 @@ function App() {
                     <Route path="commandes" element={<AdminOrders />} />
                     <Route path="parametres-site" element={<AdminSiteSettings />} />
                     <Route path="galerie" element={<AdminGallery />} />
+                    <Route path="newsletter" element={<AdminNewsletter />} />
                   </Route>
                 </Route>
               </Routes>
