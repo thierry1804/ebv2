@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Search, User, Heart, ShoppingCart, Menu, X } from 'lucide-react';
 import { useCart } from '../../context/CartContext';
@@ -22,6 +22,9 @@ export function Header() {
   );
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isMegaMenuOpen, setIsMegaMenuOpen] = useState(false);
+  const [megaMenuTopPx, setMegaMenuTopPx] = useState(0);
+  const headerRef = useRef<HTMLElement>(null);
+  const megaMenuCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [logoConfig, setLogoConfig] = useState<HeaderLogoConfig>({ text: 'ByValsue', imageUrl: null, link: '/' });
@@ -37,6 +40,49 @@ export function Header() {
   useEffect(() => {
     loadHeaderConfigs();
   }, []);
+
+  useLayoutEffect(() => {
+    if (!isMegaMenuOpen) return;
+    const header = headerRef.current;
+    if (!header) return;
+    const syncTop = () => setMegaMenuTopPx(header.getBoundingClientRect().bottom);
+    syncTop();
+    window.addEventListener('resize', syncTop);
+    window.addEventListener('scroll', syncTop, { passive: true });
+    return () => {
+      window.removeEventListener('resize', syncTop);
+      window.removeEventListener('scroll', syncTop);
+    };
+  }, [isMegaMenuOpen]);
+
+  useEffect(
+    () => () => {
+      if (megaMenuCloseTimerRef.current) {
+        clearTimeout(megaMenuCloseTimerRef.current);
+      }
+    },
+    []
+  );
+
+  const cancelMegaMenuClose = () => {
+    if (megaMenuCloseTimerRef.current) {
+      clearTimeout(megaMenuCloseTimerRef.current);
+      megaMenuCloseTimerRef.current = null;
+    }
+  };
+
+  const openMegaMenu = () => {
+    cancelMegaMenuClose();
+    setIsMegaMenuOpen(true);
+  };
+
+  const scheduleCloseMegaMenu = () => {
+    cancelMegaMenuClose();
+    megaMenuCloseTimerRef.current = setTimeout(() => {
+      setIsMegaMenuOpen(false);
+      megaMenuCloseTimerRef.current = null;
+    }, 220);
+  };
 
   const loadHeaderConfigs = async () => {
     try {
@@ -93,7 +139,10 @@ export function Header() {
 
   return (
     <>
-      <header className="sticky top-0 z-40 bg-white/60 backdrop-blur-lg shadow-sm">
+      <header
+        ref={headerRef}
+        className="sticky top-0 z-40 bg-white/60 backdrop-blur-lg shadow-sm"
+      >
         {/* Bannière promotionnelle */}
         {bannerConfig.isVisible && (
           <div className="bg-secondary/90 backdrop-blur-sm text-white text-center py-2 text-sm font-medium">
@@ -120,7 +169,7 @@ export function Header() {
             </Link>
 
             {/* Menu desktop */}
-            <div className="hidden lg:flex items-center gap-8">
+            <div className="hidden lg:flex min-h-16 items-center gap-8">
               <Link
                 to="/"
                 className="text-text-dark hover:text-secondary transition-colors font-semibold drop-shadow-sm focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-offset-2 rounded px-2 py-1"
@@ -128,13 +177,14 @@ export function Header() {
                 Accueil
               </Link>
               <div
-                className="relative"
-                onMouseEnter={() => setIsMegaMenuOpen(true)}
-                onMouseLeave={() => setIsMegaMenuOpen(false)}
-                onFocus={() => setIsMegaMenuOpen(true)}
+                className="relative flex min-h-16 items-center self-stretch"
+                onMouseEnter={openMegaMenu}
+                onMouseLeave={scheduleCloseMegaMenu}
+                onFocus={openMegaMenu}
                 onBlur={(e) => {
                   // Ne fermer que si le focus sort complètement du menu
                   if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                    cancelMegaMenuClose();
                     setIsMegaMenuOpen(false);
                   }
                 }}
@@ -150,7 +200,14 @@ export function Header() {
                   Boutique
                 </Link>
                 {isMegaMenuOpen && (
-                  <div className="absolute top-full left-1/2 -translate-x-1/2 mt-4 w-screen max-w-7xl bg-white shadow-2xl rounded-2xl p-8 border border-gray-100 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+                  <div
+                    className="fixed left-1/2 z-[100] w-[min(80rem,calc(100vw-2rem))] -translate-x-1/2 pt-4"
+                    style={{ top: megaMenuTopPx }}
+                    role="region"
+                    aria-label="Catégories de la boutique"
+                    onMouseEnter={openMegaMenu}
+                  >
+                    <div className="max-h-[min(75vh,calc(100dvh-5.5rem))] overflow-y-auto overscroll-contain rounded-2xl border border-gray-100 bg-white p-8 shadow-2xl animate-in fade-in slide-in-from-top-2 duration-200">
                     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
                       {categoriesForDisplay.map((category) => (
                         <Link
@@ -201,6 +258,7 @@ export function Header() {
                         Aucune catégorie disponible
                       </div>
                     )}
+                    </div>
                   </div>
                 )}
               </div>

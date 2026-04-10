@@ -279,7 +279,12 @@ export default function AdminProducts() {
     image_url: string;
     folder_id: string | null;
     display_order: number;
+    created_at: string;
+    original_filename: string | null;
   }
+
+  type GalleryPickerSortMode = 'date-desc' | 'date-asc' | 'name-asc' | 'name-desc';
+
   const [isGalleryPickerOpen, setIsGalleryPickerOpen] = useState(false);
   const [galleryFolders, setGalleryFolders] = useState<GalleryFolder[]>([]);
   const [galleryImages, setGalleryImages] = useState<GalleryImageItem[]>([]);
@@ -287,6 +292,10 @@ export default function AdminProducts() {
   const [isLoadingGallery, setIsLoadingGallery] = useState(false);
   /** Miniatures dont le fichier ne charge pas (comme AdminGallery) — non affichées dans le sélecteur */
   const [galleryBrokenImageIds, setGalleryBrokenImageIds] = useState<Set<string>>(new Set());
+  const [galleryPickerSortMode, setGalleryPickerSortMode] = useState<GalleryPickerSortMode>('date-desc');
+  const galleryPickerScrollRef = useRef<HTMLDivElement>(null);
+  const [galleryPickerScrubPct, setGalleryPickerScrubPct] = useState(0);
+  const [galleryPickerScrubVisible, setGalleryPickerScrubVisible] = useState(false);
   /** Incrémenté à la fermeture du modal et au début de chaque chargement — ignore les réponses obsolètes */
   const galleryLoadGenRef = useRef(0);
   const [selectedGalleryImages, setSelectedGalleryImages] = useState<GalleryImageSelection[]>([]);
@@ -1043,8 +1052,8 @@ export default function AdminProducts() {
       const imagesRes = await supabase
         .from('gallery')
         .select('*')
-        .order('display_order', { ascending: true })
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: false });
 
       if (gen !== galleryLoadGenRef.current) return;
 
@@ -1061,6 +1070,8 @@ export default function AdminProducts() {
             image_url: normalizeImageApiUrl(String(img.image_url ?? '')),
             folder_id: (img.folder_id as string | null) ?? null,
             display_order: typeof img.display_order === 'number' ? img.display_order : 0,
+            created_at: String(img.created_at ?? ''),
+            original_filename: (img.original_filename as string | null) ?? null,
           }))
         );
         console.log(`${ADMIN_LOG} loadGalleryData · images OK`, { count: imagesRes.data?.length });
@@ -1091,16 +1102,95 @@ export default function AdminProducts() {
     setSelectedGalleryImages((prev) => prev.filter((s) => s.id !== id));
   }, []);
 
-  const galleryPickerDisplayedImages = useMemo(
-    () =>
-      galleryImages.filter(
-        (img) =>
-          Boolean(img.image_url?.trim()) &&
-          !galleryBrokenImageIds.has(img.id) &&
-          (galleryCurrentFolder === null || img.folder_id === galleryCurrentFolder),
-      ),
-    [galleryImages, galleryCurrentFolder, galleryBrokenImageIds],
-  );
+  const galleryPickerDisplayedImages = useMemo(() => {
+    const filtered = galleryImages.filter(
+      (img) =>
+        Boolean(img.image_url?.trim()) &&
+        !galleryBrokenImageIds.has(img.id) &&
+        (galleryCurrentFolder === null || img.folder_id === galleryCurrentFolder),
+    );
+    const nameOf = (img: GalleryImageItem) =>
+      (img.title || img.original_filename || '').trim() || img.id;
+    const time = (img: GalleryImageItem) => new Date(img.created_at).getTime();
+    const next = [...filtered];
+    switch (galleryPickerSortMode) {
+      case 'date-desc':
+        next.sort((a, b) => time(b) - time(a) || b.id.localeCompare(a.id));
+        break;
+      case 'date-asc':
+        next.sort((a, b) => time(a) - time(b) || a.id.localeCompare(b.id));
+        break;
+      case 'name-asc':
+        next.sort(
+          (a, b) =>
+            nameOf(a).localeCompare(nameOf(b), 'fr', { sensitivity: 'base' }) || a.id.localeCompare(b.id),
+        );
+        break;
+      case 'name-desc':
+        next.sort(
+          (a, b) =>
+            nameOf(b).localeCompare(nameOf(a), 'fr', { sensitivity: 'base' }) || b.id.localeCompare(a.id),
+        );
+        break;
+      default:
+        break;
+    }
+    return next;
+  }, [galleryImages, galleryCurrentFolder, galleryBrokenImageIds, galleryPickerSortMode]);
+
+  const updateGalleryPickerScrubMetrics = useCallback(() => {
+    const el = galleryPickerScrollRef.current;
+    if (!el) return;
+    const max = el.scrollHeight - el.clientHeight;
+    setGalleryPickerScrubVisible(max > 16);
+    if (max > 0) {
+      setGalleryPickerScrubPct((el.scrollTop / max) * 100);
+    } else {
+      setGalleryPickerScrubPct(0);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isGalleryPickerOpen) return;
+    updateGalleryPickerScrubMetrics();
+    const t = window.requestAnimationFrame(updateGalleryPickerScrubMetrics);
+    return () => window.cancelAnimationFrame(t);
+  }, [
+    isGalleryPickerOpen,
+    galleryPickerDisplayedImages.length,
+    galleryPickerSortMode,
+    galleryCurrentFolder,
+    updateGalleryPickerScrubMetrics,
+  ]);
+
+  useEffect(() => {
+    if (!isGalleryPickerOpen) return;
+    const el = galleryPickerScrollRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => updateGalleryPickerScrubMetrics());
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [isGalleryPickerOpen, updateGalleryPickerScrubMetrics]);
+
+  const handleGalleryPickerScroll = () => {
+    const el = galleryPickerScrollRef.current;
+    if (!el) return;
+    const max = el.scrollHeight - el.clientHeight;
+    if (max <= 0) {
+      setGalleryPickerScrubPct(0);
+      return;
+    }
+    setGalleryPickerScrubPct((el.scrollTop / max) * 100);
+  };
+
+  const handleGalleryPickerScrubChange = (pct: number) => {
+    const el = galleryPickerScrollRef.current;
+    if (!el) return;
+    const max = el.scrollHeight - el.clientHeight;
+    if (max <= 0) return;
+    el.scrollTop = (pct / 100) * max;
+    setGalleryPickerScrubPct(pct);
+  };
 
   const openGalleryPicker = () => {
     setGalleryCurrentFolder(null);
@@ -3488,8 +3578,52 @@ export default function AdminProducts() {
                     ))}
                   </div>
 
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <label htmlFor="gallery-picker-sort" className="sr-only">
+                      Trier les images de la galerie
+                    </label>
+                    <select
+                      id="gallery-picker-sort"
+                      value={galleryPickerSortMode}
+                      onChange={(e) => setGalleryPickerSortMode(e.target.value as GalleryPickerSortMode)}
+                      className="w-full sm:w-auto rounded-lg border border-gray-200 bg-white px-2.5 py-2 text-sm text-gray-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-secondary min-w-[10.5rem]"
+                      aria-label="Trier les images"
+                    >
+                      <option value="date-desc">Date (plus récent)</option>
+                      <option value="date-asc">Date (plus ancien)</option>
+                      <option value="name-asc">Nom (A → Z)</option>
+                      <option value="name-desc">Nom (Z → A)</option>
+                    </select>
+                  </div>
+
+                  {galleryPickerScrubVisible && galleryPickerDisplayedImages.length > 0 && (
+                    <div className="md:hidden">
+                      <label htmlFor="gallery-picker-scroll-scrub" className="block text-xs font-medium text-gray-600 mb-1">
+                        Défilement rapide
+                      </label>
+                      <input
+                        id="gallery-picker-scroll-scrub"
+                        type="range"
+                        min={0}
+                        max={100}
+                        step={1}
+                        value={galleryPickerScrubPct}
+                        onChange={(e) => handleGalleryPickerScrubChange(Number(e.target.value))}
+                        className="w-full h-2 accent-secondary cursor-pointer"
+                        aria-valuenow={Math.round(galleryPickerScrubPct)}
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                        aria-label="Défilement rapide dans la liste d’images"
+                      />
+                    </div>
+                  )}
+
                   {/* Grille d'images */}
-                  <div className="scrollbar-thin grid grid-cols-3 md:grid-cols-4 gap-3 max-h-[400px] overflow-y-auto">
+                  <div
+                    ref={galleryPickerScrollRef}
+                    onScroll={handleGalleryPickerScroll}
+                    className="scrollbar-thin grid grid-cols-3 md:grid-cols-4 gap-3 max-md:max-h-[min(50vh,320px)] max-md:overflow-y-auto md:max-h-[400px] md:overflow-y-auto"
+                  >
                     {galleryPickerDisplayedImages.map((img) => {
                         const isSelected = selectedGalleryImages.some(s => s.image_url === img.image_url);
                         return (

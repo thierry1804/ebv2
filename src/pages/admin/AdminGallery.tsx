@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useMemo } from 'react';
+import { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
 import {
   Plus, Trash2, Upload, X, Image as ImageIcon, Loader2, Grid, List,
@@ -44,6 +44,44 @@ interface GalleryImage {
 
 type ViewMode = 'grid' | 'list';
 
+type GallerySortMode = 'date-desc' | 'date-asc' | 'name-asc' | 'name-desc';
+
+function galleryImageDisplayName(img: GalleryImage): string {
+  return (img.title || img.original_filename || '').trim() || img.id;
+}
+
+function sortGalleryImages(list: GalleryImage[], mode: GallerySortMode): GalleryImage[] {
+  const next = [...list];
+  const time = (img: GalleryImage) => new Date(img.created_at).getTime();
+  switch (mode) {
+    case 'date-desc':
+      next.sort((a, b) => time(b) - time(a) || b.id.localeCompare(a.id));
+      break;
+    case 'date-asc':
+      next.sort((a, b) => time(a) - time(b) || a.id.localeCompare(b.id));
+      break;
+    case 'name-asc':
+      next.sort(
+        (a, b) =>
+          galleryImageDisplayName(a).localeCompare(galleryImageDisplayName(b), 'fr', {
+            sensitivity: 'base',
+          }) || a.id.localeCompare(b.id),
+      );
+      break;
+    case 'name-desc':
+      next.sort(
+        (a, b) =>
+          galleryImageDisplayName(b).localeCompare(galleryImageDisplayName(a), 'fr', {
+            sensitivity: 'base',
+          }) || b.id.localeCompare(a.id),
+      );
+      break;
+    default:
+      break;
+  }
+  return next;
+}
+
 /* ------------------------------------------------------------------ */
 /*  Composant                                                          */
 /* ------------------------------------------------------------------ */
@@ -71,6 +109,11 @@ export default function AdminGallery() {
 
   // Vue
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
+  const [gallerySortMode, setGallerySortMode] = useState<GallerySortMode>('date-desc');
+
+  const galleryScrollRef = useRef<HTMLDivElement>(null);
+  const [galleryScrubPct, setGalleryScrubPct] = useState(0);
+  const [galleryScrubberVisible, setGalleryScrubberVisible] = useState(false);
 
   // Sélection multiple
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -133,8 +176,8 @@ export default function AdminGallery() {
       const { data, error } = await supabase
         .from('gallery')
         .select('*')
-        .order('display_order', { ascending: true })
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: false });
 
       if (error) {
         console.warn('Table gallery:', error);
@@ -163,10 +206,61 @@ export default function AdminGallery() {
     [images, currentFolderId]
   );
 
-  const displayedGalleryImages = useMemo(
-    () => filteredImages.filter((img) => !brokenImageIds.has(img.id)),
-    [filteredImages, brokenImageIds]
+  const sortedFilteredImages = useMemo(
+    () => sortGalleryImages(filteredImages, gallerySortMode),
+    [filteredImages, gallerySortMode]
   );
+
+  const displayedGalleryImages = useMemo(
+    () => sortedFilteredImages.filter((img) => !brokenImageIds.has(img.id)),
+    [sortedFilteredImages, brokenImageIds]
+  );
+
+  const updateGalleryScrubMetrics = useCallback(() => {
+    const el = galleryScrollRef.current;
+    if (!el) return;
+    const max = el.scrollHeight - el.clientHeight;
+    setGalleryScrubberVisible(max > 16);
+    if (max > 0) {
+      setGalleryScrubPct((el.scrollTop / max) * 100);
+    } else {
+      setGalleryScrubPct(0);
+    }
+  }, []);
+
+  useEffect(() => {
+    updateGalleryScrubMetrics();
+    const t = window.requestAnimationFrame(updateGalleryScrubMetrics);
+    return () => window.cancelAnimationFrame(t);
+  }, [displayedGalleryImages.length, viewMode, currentFolderId, gallerySortMode, updateGalleryScrubMetrics]);
+
+  useEffect(() => {
+    const el = galleryScrollRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => updateGalleryScrubMetrics());
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [updateGalleryScrubMetrics]);
+
+  const handleGalleryScroll = () => {
+    const el = galleryScrollRef.current;
+    if (!el) return;
+    const max = el.scrollHeight - el.clientHeight;
+    if (max <= 0) {
+      setGalleryScrubPct(0);
+      return;
+    }
+    setGalleryScrubPct((el.scrollTop / max) * 100);
+  };
+
+  const handleGalleryScrubChange = (pct: number) => {
+    const el = galleryScrollRef.current;
+    if (!el) return;
+    const max = el.scrollHeight - el.clientHeight;
+    if (max <= 0) return;
+    el.scrollTop = (pct / 100) * max;
+    setGalleryScrubPct(pct);
+  };
 
   const handleGalleryImageError = (id: string) => {
     setBrokenImageIds((prev) => new Set(prev).add(id));
@@ -536,22 +630,42 @@ export default function AdminGallery() {
 
         <div className="scrollbar-thin flex min-w-0 flex-nowrap items-center gap-2 overflow-x-auto sm:overflow-visible">
           {(filteredImages.length > 0 || folders.length > 0) && (
-            <div className="flex shrink-0 bg-gray-100 rounded-lg p-1">
-              <button
-                onClick={() => setViewMode('grid')}
-                className={`p-2 rounded-md transition-colors ${viewMode === 'grid' ? 'bg-white shadow-sm text-secondary' : 'text-gray-500 hover:text-gray-700'}`}
-                title="Vignettes"
+            <>
+              <label className="sr-only" htmlFor="gallery-sort">
+                Trier les photos
+              </label>
+              <select
+                id="gallery-sort"
+                value={gallerySortMode}
+                onChange={(e) => setGallerySortMode(e.target.value as GallerySortMode)}
+                className="shrink-0 rounded-lg border border-gray-200 bg-white px-2.5 py-2 text-sm text-gray-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-secondary min-w-[10.5rem]"
+                title="Trier"
+                aria-label="Trier les photos"
               >
-                <Grid size={18} />
-              </button>
-              <button
-                onClick={() => setViewMode('list')}
-                className={`p-2 rounded-md transition-colors ${viewMode === 'list' ? 'bg-white shadow-sm text-secondary' : 'text-gray-500 hover:text-gray-700'}`}
-                title="Liste"
-              >
-                <List size={18} />
-              </button>
-            </div>
+                <option value="date-desc">Date (plus récent)</option>
+                <option value="date-asc">Date (plus ancien)</option>
+                <option value="name-asc">Nom (A → Z)</option>
+                <option value="name-desc">Nom (Z → A)</option>
+              </select>
+              <div className="flex shrink-0 bg-gray-100 rounded-lg p-1">
+                <button
+                  type="button"
+                  onClick={() => setViewMode('grid')}
+                  className={`p-2 rounded-md transition-colors ${viewMode === 'grid' ? 'bg-white shadow-sm text-secondary' : 'text-gray-500 hover:text-gray-700'}`}
+                  title="Vignettes"
+                >
+                  <Grid size={18} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('list')}
+                  className={`p-2 rounded-md transition-colors ${viewMode === 'list' ? 'bg-white shadow-sm text-secondary' : 'text-gray-500 hover:text-gray-700'}`}
+                  title="Liste"
+                >
+                  <List size={18} />
+                </button>
+              </div>
+            </>
           )}
           {!currentFolderId && (
             <button
@@ -798,125 +912,158 @@ export default function AdminGallery() {
             Les fichiers ne sont pas disponibles sur le serveur pour les entrées encore enregistrées. Rechargez après correction ou supprimez les lignes obsolètes en base.
           </p>
         </div>
-      ) : viewMode === 'grid' ? (
-        /* ============= Vue vignettes ============= */
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-          {displayedGalleryImages.map((image) => {
-            const isSelected = selectedIds.has(image.id);
-            return (
-              <div
-                key={image.id}
-                className={`group relative bg-white rounded-lg shadow-sm border-2 overflow-hidden transition-colors ${
-                  isSelected ? 'border-secondary' : 'border-gray-200'
-                }`}
-              >
-                {/* Checkbox */}
-                <div className={`absolute top-2 left-2 z-10 transition-opacity ${isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
-                  <input
-                    type="checkbox"
-                    checked={isSelected}
-                    onChange={() => toggleSelect(image.id)}
-                    className="w-5 h-5 rounded border-gray-300 text-secondary focus:ring-secondary cursor-pointer"
-                  />
-                </div>
-                <div className="aspect-square overflow-hidden bg-gray-100">
-                  <img
-                    src={image.image_url}
-                    alt={image.title || 'Photo galerie'}
-                    className="w-full h-full object-cover transition-transform group-hover:scale-105"
-                    onError={() => handleGalleryImageError(image.id)}
-                  />
-                </div>
-                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-end justify-between p-3 opacity-0 group-hover:opacity-100">
-                  {(image.title || image.original_filename) && (
-                    <span className="text-white text-sm font-medium truncate mr-2">
-                      {image.title || image.original_filename}
-                    </span>
-                  )}
-                  <button
-                    onClick={() => handleDelete(image)}
-                    className="flex-shrink-0 p-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
-                    title="Supprimer"
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
       ) : (
-        /* ============= Vue liste ============= */
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-          <table className="w-full">
-            <thead className="bg-gray-50 border-b border-gray-200">
-              <tr>
-                <th className="px-4 py-3 w-10">
-                  <input
-                    type="checkbox"
-                    checked={selectedIds.size === displayedGalleryImages.length && displayedGalleryImages.length > 0}
-                    onChange={toggleSelectAll}
-                    className="rounded border-gray-300"
-                  />
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Image</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Titre</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase hidden md:table-cell">Description</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase hidden sm:table-cell">Date</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {displayedGalleryImages.map((image) => {
-                const isSelected = selectedIds.has(image.id);
-                return (
-                  <tr key={image.id} className={`hover:bg-gray-50 ${isSelected ? 'bg-secondary/5' : ''}`}>
-                    <td className="px-4 py-3">
-                      <input
-                        type="checkbox"
-                        checked={isSelected}
-                        onChange={() => toggleSelect(image.id)}
-                        className="rounded border-gray-300 text-secondary focus:ring-secondary cursor-pointer"
-                      />
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="w-16 h-16 rounded-lg overflow-hidden bg-gray-100">
+        <>
+          {galleryScrubberVisible && displayedGalleryImages.length > 0 && (
+            <div className="md:hidden mb-3 px-0.5">
+              <label htmlFor="gallery-scroll-scrub" className="block text-xs font-medium text-gray-600 mb-1">
+                Défilement rapide
+              </label>
+              <input
+                id="gallery-scroll-scrub"
+                type="range"
+                min={0}
+                max={100}
+                step={1}
+                value={galleryScrubPct}
+                onChange={(e) => handleGalleryScrubChange(Number(e.target.value))}
+                className="w-full h-2 accent-secondary cursor-pointer"
+                aria-valuenow={Math.round(galleryScrubPct)}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-label="Défilement rapide dans la galerie"
+              />
+            </div>
+          )}
+          <div
+            ref={galleryScrollRef}
+            onScroll={handleGalleryScroll}
+            className="max-md:max-h-[min(70vh,28rem)] max-md:overflow-y-auto max-md:-mx-1 max-md:px-1 md:overflow-visible md:max-h-none scrollbar-thin"
+          >
+            {viewMode === 'grid' ? (
+              /* ============= Vue vignettes ============= */
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                {displayedGalleryImages.map((image) => {
+                  const isSelected = selectedIds.has(image.id);
+                  return (
+                    <div
+                      key={image.id}
+                      className={`group relative bg-white rounded-lg shadow-sm border-2 overflow-hidden transition-colors ${
+                        isSelected ? 'border-secondary' : 'border-gray-200'
+                      }`}
+                    >
+                      {/* Checkbox */}
+                      <div className={`absolute top-2 left-2 z-10 transition-opacity ${isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleSelect(image.id)}
+                          className="w-5 h-5 rounded border-gray-300 text-secondary focus:ring-secondary cursor-pointer"
+                        />
+                      </div>
+                      <div className="aspect-square overflow-hidden bg-gray-100">
                         <img
                           src={image.image_url}
                           alt={image.title || 'Photo galerie'}
-                          className="w-full h-full object-cover"
+                          className="w-full h-full object-cover transition-transform group-hover:scale-105"
                           onError={() => handleGalleryImageError(image.id)}
                         />
                       </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="text-sm text-text-dark font-medium">
-                        {image.title || image.original_filename || <span className="text-gray-400 italic">Sans titre</span>}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 hidden md:table-cell">
-                      <span className="text-sm text-gray-600 line-clamp-2">
-                        {image.description || <span className="text-gray-400">—</span>}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 hidden sm:table-cell">
-                      <span className="text-sm text-gray-500">{formatDate(image.created_at)}</span>
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <button
-                        onClick={() => handleDelete(image)}
-                        className="p-2 text-red-600 hover:text-red-900 hover:bg-red-50 rounded-lg transition-colors"
-                        title="Supprimer"
-                      >
-                        <Trash2 size={18} />
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-end justify-between p-3 opacity-0 group-hover:opacity-100">
+                        {(image.title || image.original_filename) && (
+                          <span className="text-white text-sm font-medium truncate mr-2">
+                            {image.title || image.original_filename}
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(image)}
+                          className="flex-shrink-0 p-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
+                          title="Supprimer"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              /* ============= Vue liste ============= */
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+                <table className="w-full">
+                  <thead className="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                      <th className="px-4 py-3 w-10">
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.size === displayedGalleryImages.length && displayedGalleryImages.length > 0}
+                          onChange={toggleSelectAll}
+                          className="rounded border-gray-300"
+                        />
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Image</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Titre</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase hidden md:table-cell">Description</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase hidden sm:table-cell">Date</th>
+                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {displayedGalleryImages.map((image) => {
+                      const isSelected = selectedIds.has(image.id);
+                      return (
+                        <tr key={image.id} className={`hover:bg-gray-50 ${isSelected ? 'bg-secondary/5' : ''}`}>
+                          <td className="px-4 py-3">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => toggleSelect(image.id)}
+                              className="rounded border-gray-300 text-secondary focus:ring-secondary cursor-pointer"
+                            />
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="w-16 h-16 rounded-lg overflow-hidden bg-gray-100">
+                              <img
+                                src={image.image_url}
+                                alt={image.title || 'Photo galerie'}
+                                className="w-full h-full object-cover"
+                                onError={() => handleGalleryImageError(image.id)}
+                              />
+                            </div>
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className="text-sm text-text-dark font-medium">
+                              {image.title || image.original_filename || <span className="text-gray-400 italic">Sans titre</span>}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 hidden md:table-cell">
+                            <span className="text-sm text-gray-600 line-clamp-2">
+                              {image.description || <span className="text-gray-400">—</span>}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 hidden sm:table-cell">
+                            <span className="text-sm text-gray-500">{formatDate(image.created_at)}</span>
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <button
+                              type="button"
+                              onClick={() => handleDelete(image)}
+                              className="p-2 text-red-600 hover:text-red-900 hover:bg-red-50 rounded-lg transition-colors"
+                              title="Supprimer"
+                            >
+                              <Trash2 size={18} />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </>
       )}
 
       {/* ============= Offcanvas Upload ============= */}
