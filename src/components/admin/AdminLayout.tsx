@@ -1,4 +1,5 @@
-import { ReactNode, useState } from 'react';
+import { ReactNode, useState, useRef } from 'react';
+import { AdminMainScrollContext } from '../../context/AdminMainScrollContext';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAdminAuth } from '../../context/AdminAuthContext';
 import {
@@ -29,6 +30,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const mainScrollRef = useRef<HTMLElement | null>(null);
 
   const handleLogout = async () => {
     await logout();
@@ -128,24 +130,29 @@ export function AdminLayout({ children }: AdminLayoutProps) {
 
       {/* Colonne principale : scroll unique ici (évite double barre body + menu) */}
       <div className="flex h-full min-h-0 flex-col lg:pl-64">
-        <header className="z-30 shrink-0 border-b border-gray-100 bg-white shadow-sm">
-          <div className="flex items-center justify-between px-6 py-4">
-            <button
-              onClick={() => setSidebarOpen(true)}
-              className="lg:hidden text-gray-600 hover:text-gray-900"
-            >
-              <Menu size={24} />
-            </button>
-            <h1 className="text-xl font-heading font-semibold text-text-dark">
-              Administration
-            </h1>
-            <div className="w-6" /> {/* Spacer pour centrer */}
-          </div>
-        </header>
+        <AdminMainScrollContext.Provider value={mainScrollRef}>
+          <header className="z-30 shrink-0 border-b border-gray-100 bg-white shadow-sm">
+            <div className="flex items-center justify-between px-6 py-4">
+              <button
+                onClick={() => setSidebarOpen(true)}
+                className="lg:hidden text-gray-600 hover:text-gray-900"
+              >
+                <Menu size={24} />
+              </button>
+              <h1 className="text-xl font-heading font-semibold text-text-dark">
+                Administration
+              </h1>
+              <div className="w-6" /> {/* Spacer pour centrer */}
+            </div>
+          </header>
 
-        <main className="scrollbar-thin min-h-0 flex-1 overflow-y-auto overflow-x-auto p-6">
-          {children}
-        </main>
+          <main
+            ref={mainScrollRef}
+            className="scrollbar-thin min-h-0 flex-1 overflow-y-auto overflow-x-auto p-6"
+          >
+            {children}
+          </main>
+        </AdminMainScrollContext.Provider>
       </div>
     </div>
   );

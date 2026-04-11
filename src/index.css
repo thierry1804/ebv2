@@ -52,6 +52,14 @@
   .scrollbar-thin::-webkit-scrollbar-thumb:hover {
     background-color: #9ca3af;
   }
+
+  /** Galerie admin : défilement sur `<main>`, barre native masquée (curseur rapide à droite, tous écrans). */
+  main.admin-gallery-main-scroll {
+    scrollbar-width: none;
+  }
+  main.admin-gallery-main-scroll::-webkit-scrollbar {
+    display: none;
+  }
   
   /* Accessibilité - Screen reader only */
   .sr-only {

@@ -34,6 +34,7 @@ import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { detectColorsFromImages } from '../../utils/colorDetection';
 import { formatAppError, extractErrorMessage } from '../../utils/errors';
 import { cn } from '../../utils/cn';
+import { GalleryFastScrollRail } from '../../components/admin/GalleryFastScrollRail';
 
 type ProductFormErrors = Partial<
   Record<'name' | 'category' | 'price' | 'stock' | 'salePrice' | 'general', string>
@@ -3596,33 +3597,12 @@ export default function AdminProducts() {
                     </select>
                   </div>
 
-                  {galleryPickerScrubVisible && galleryPickerDisplayedImages.length > 0 && (
-                    <div className="md:hidden">
-                      <label htmlFor="gallery-picker-scroll-scrub" className="block text-xs font-medium text-gray-600 mb-1">
-                        Défilement rapide
-                      </label>
-                      <input
-                        id="gallery-picker-scroll-scrub"
-                        type="range"
-                        min={0}
-                        max={100}
-                        step={1}
-                        value={galleryPickerScrubPct}
-                        onChange={(e) => handleGalleryPickerScrubChange(Number(e.target.value))}
-                        className="w-full h-2 accent-secondary cursor-pointer"
-                        aria-valuenow={Math.round(galleryPickerScrubPct)}
-                        aria-valuemin={0}
-                        aria-valuemax={100}
-                        aria-label="Défilement rapide dans la liste d’images"
-                      />
-                    </div>
-                  )}
-
-                  {/* Grille d'images */}
+                  {/* Grille d'images + curseur rapide mobile (bord droit) */}
+                  <div className="relative">
                   <div
                     ref={galleryPickerScrollRef}
                     onScroll={handleGalleryPickerScroll}
-                    className="scrollbar-thin grid grid-cols-3 md:grid-cols-4 gap-3 max-md:max-h-[min(50vh,320px)] max-md:overflow-y-auto md:max-h-[400px] md:overflow-y-auto"
+                    className="scrollbar-thin grid grid-cols-3 md:grid-cols-4 gap-3 max-md:max-h-[min(50vh,320px)] max-md:overflow-y-auto max-md:pr-2 max-md:[scrollbar-width:none] max-md:[&::-webkit-scrollbar]:hidden md:max-h-[400px] md:overflow-y-auto"
                   >
                     {galleryPickerDisplayedImages.map((img) => {
                         const isSelected = selectedGalleryImages.some(s => s.image_url === img.image_url);
@@ -3653,6 +3633,14 @@ export default function AdminProducts() {
                           </button>
                         );
                       })}
+                  </div>
+                  {galleryPickerScrubVisible && galleryPickerDisplayedImages.length > 0 && (
+                    <GalleryFastScrollRail
+                      scrollRef={galleryPickerScrollRef}
+                      scrollPct={galleryPickerScrubPct}
+                      onSeek={handleGalleryPickerScrubChange}
+                    />
+                  )}
                   </div>
 
                   {galleryPickerDisplayedImages.length === 0 && (

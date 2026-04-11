@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { ImageZoom } from '../ui/ImageZoom';
@@ -14,10 +14,16 @@ interface ProductGalleryProps {
 export function ProductGallery({ images, productName, onImageChange, selectedIndex }: ProductGalleryProps) {
   const [selectedImage, setSelectedImage] = useState(selectedIndex ?? 0);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const mobileCarouselRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
   const touchStartX = useRef<number | null>(null);
   const touchEndX = useRef<number | null>(null);
+  const selectedImageRef = useRef(selectedImage);
+  const isAutomatedScrollRef = useRef(false);
+  const scrollSyncTimeoutRef = useRef<number | null>(null);
+
+  selectedImageRef.current = selectedImage;
 
   // Sync with controlled selectedIndex prop
   useEffect(() => {
@@ -26,10 +32,14 @@ export function ProductGallery({ images, productName, onImageChange, selectedInd
     }
   }, [selectedIndex]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const changeImage = (index: number) => {
-    setSelectedImage(index);
-    onImageChange?.(index);
-  };
+  const changeImage = useCallback(
+    (index: number) => {
+      const clamped = Math.max(0, Math.min(images.length - 1, index));
+      setSelectedImage(clamped);
+      onImageChange?.(clamped);
+    },
+    [images.length, onImageChange],
+  );
 
   const checkScrollability = () => {
     if (scrollContainerRef.current) {
@@ -51,6 +61,81 @@ export function ProductGallery({ images, productName, onImageChange, selectedInd
       };
     }
   }, [images]);
+
+  /** Aligne le carrousel mobile sur l’index courant (miniature, props, redimensionnement). */
+  const scrollMobileCarouselToIndex = useCallback(
+    (index: number, behavior: ScrollBehavior = 'smooth') => {
+      const el = mobileCarouselRef.current;
+      if (!el || images.length <= 1) return;
+      const w = el.clientWidth;
+      if (!w) return;
+      const target = index * w;
+      if (Math.abs(el.scrollLeft - target) < 6) return;
+      isAutomatedScrollRef.current = true;
+      el.scrollTo({ left: target, behavior });
+      window.setTimeout(() => {
+        isAutomatedScrollRef.current = false;
+      }, 450);
+    },
+    [images.length],
+  );
+
+  useEffect(() => {
+    scrollMobileCarouselToIndex(selectedImage, 'smooth');
+  }, [selectedImage, scrollMobileCarouselToIndex]);
+
+  /** Après resize du carrousel : recaler sans animation pour éviter les décalages. */
+  useEffect(() => {
+    const el = mobileCarouselRef.current;
+    if (!el || images.length <= 1) return;
+
+    const ro = new ResizeObserver(() => {
+      const w = el.clientWidth;
+      if (!w) return;
+      isAutomatedScrollRef.current = true;
+      el.scrollTo({ left: selectedImageRef.current * w, behavior: 'auto' });
+      window.setTimeout(() => {
+        isAutomatedScrollRef.current = false;
+      }, 50);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [images.length]);
+
+  const flushScrollIndex = useCallback(() => {
+    const el = mobileCarouselRef.current;
+    if (!el || images.length <= 1 || isAutomatedScrollRef.current) return;
+    const w = el.clientWidth;
+    if (!w) return;
+    const idx = Math.round(el.scrollLeft / w);
+    const clamped = Math.max(0, Math.min(images.length - 1, idx));
+    if (clamped !== selectedImageRef.current) {
+      changeImage(clamped);
+    }
+  }, [changeImage, images.length]);
+
+  useEffect(() => {
+    const el = mobileCarouselRef.current;
+    if (!el || images.length <= 1) return;
+
+    const onScroll = () => {
+      if (scrollSyncTimeoutRef.current) window.clearTimeout(scrollSyncTimeoutRef.current);
+      scrollSyncTimeoutRef.current = window.setTimeout(flushScrollIndex, 60);
+    };
+
+    const onScrollEnd = () => {
+      if (scrollSyncTimeoutRef.current) window.clearTimeout(scrollSyncTimeoutRef.current);
+      flushScrollIndex();
+    };
+
+    el.addEventListener('scroll', onScroll, { passive: true });
+    el.addEventListener('scrollend', onScrollEnd);
+    return () => {
+      el.removeEventListener('scroll', onScroll);
+      el.removeEventListener('scrollend', onScrollEnd);
+      if (scrollSyncTimeoutRef.current) window.clearTimeout(scrollSyncTimeoutRef.current);
+    };
+  }, [flushScrollIndex, images.length]);
 
   const scroll = (direction: 'left' | 'right') => {
     if (scrollContainerRef.current) {
@@ -85,7 +170,7 @@ export function ProductGallery({ images, productName, onImageChange, selectedInd
     }
   };
 
-  // Gestion du swipe pour mobile
+  // Swipe discret sur la grande image desktop (pas utilisé sur le carrousel mobile natif)
   const minSwipeDistance = 50;
 
   const onTouchStart = (e: React.TouchEvent) => {
@@ -99,7 +184,7 @@ export function ProductGallery({ images, productName, onImageChange, selectedInd
 
   const onTouchEnd = () => {
     if (!touchStartX.current || !touchEndX.current) return;
-    
+
     const distance = touchStartX.current - touchEndX.current;
     const isLeftSwipe = distance > minSwipeDistance;
     const isRightSwipe = distance < -minSwipeDistance;
@@ -112,49 +197,111 @@ export function ProductGallery({ images, productName, onImageChange, selectedInd
     }
   };
 
+  if (images.length === 0) {
+    return null;
+  }
+
   return (
     <div className="space-y-4">
-      <div 
-        className="relative aspect-square overflow-hidden rounded-lg bg-neutral-light"
-        onTouchStart={onTouchStart}
-        onTouchMove={onTouchMove}
-        onTouchEnd={onTouchEnd}
-      >
-        <ImageZoom
-          src={normalizeImageApiUrl(images[selectedImage])}
-          alt={`${productName} - Vue ${selectedImage + 1} sur ${images.length}`}
-          className="w-full h-full object-cover select-none"
-        />
-      </div>
+      {/* Mobile : bandeau horizontal type galerie Android (scroll + snap) */}
+      {images.length > 1 && (
+        <div className="md:hidden">
+          <div
+            ref={mobileCarouselRef}
+            className={cn(
+              'flex aspect-square w-full touch-pan-x snap-x snap-mandatory overflow-x-auto scroll-smooth rounded-lg bg-neutral-light',
+              '[-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
+              'overscroll-x-contain',
+            )}
+            role="region"
+            aria-roledescription="carrousel"
+            aria-label={`Photos de ${productName}, faire défiler horizontalement`}
+          >
+            {images.map((image, index) => (
+              <div
+                key={index}
+                className="h-full w-full min-w-full shrink-0 snap-start overflow-hidden"
+              >
+                <ImageZoom
+                  src={normalizeImageApiUrl(image)}
+                  alt={`${productName} - Vue ${index + 1} sur ${images.length}`}
+                  className="h-full w-full object-cover select-none"
+                />
+              </div>
+            ))}
+          </div>
+          <div className="mt-2 flex justify-center gap-1.5" aria-hidden>
+            {images.map((_, index) => (
+              <span
+                key={index}
+                className={cn(
+                  'h-1.5 rounded-full transition-all duration-200',
+                  selectedImage === index ? 'w-5 bg-secondary' : 'w-1.5 bg-neutral-support',
+                )}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Une seule image : même rendu sur tous les écrans */}
+      {images.length === 1 && (
+        <div className="relative aspect-square overflow-hidden rounded-lg bg-neutral-light md:block">
+          <ImageZoom
+            src={normalizeImageApiUrl(images[0])}
+            alt={`${productName} - Photo`}
+            className="h-full w-full object-cover select-none"
+          />
+        </div>
+      )}
+
+      {/* Desktop : image principale + swipe discret si plusieurs images */}
+      {images.length > 1 && (
+        <div
+          className="relative hidden aspect-square overflow-hidden rounded-lg bg-neutral-light md:block"
+          onTouchStart={onTouchStart}
+          onTouchMove={onTouchMove}
+          onTouchEnd={onTouchEnd}
+        >
+          <ImageZoom
+            src={normalizeImageApiUrl(images[selectedImage])}
+            alt={`${productName} - Vue ${selectedImage + 1} sur ${images.length}`}
+            className="h-full w-full object-cover select-none"
+          />
+        </div>
+      )}
+
       {images.length > 1 && (
         <div className="relative" role="group" aria-label="Galerie d'images du produit">
           {canScrollLeft && (
             <button
+              type="button"
               onClick={() => scroll('left')}
               onKeyDown={(e) => handleKeyDown(e, 'left')}
-              className="absolute left-0 top-1/2 -translate-y-1/2 z-10 bg-white/90 hover:bg-white shadow-md rounded-full p-2 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-offset-2 min-w-[44px] min-h-[44px] flex items-center justify-center"
-              aria-label="Image précédente"
+              className="absolute left-0 top-1/2 z-10 hidden min-h-[44px] min-w-[44px] -translate-y-1/2 items-center justify-center rounded-full bg-white/90 p-2 shadow-md transition-all duration-200 hover:bg-white focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-offset-2 md:flex"
+              aria-label="Faire défiler les miniatures vers la gauche"
             >
-              <ChevronLeft className="w-5 h-5 text-text-dark" />
+              <ChevronLeft className="h-5 w-5 text-text-dark" />
             </button>
           )}
           <div
             ref={scrollContainerRef}
-            className="overflow-x-auto scrollbar-hide"
+            className="scrollbar-hide overflow-x-auto"
             role="list"
             aria-label="Miniatures des images"
           >
-            <div className="flex gap-2 min-w-max">
+            <div className="flex min-w-max gap-2">
               {images.map((image, index) => (
                 <button
                   key={index}
+                  type="button"
                   onClick={() => changeImage(index)}
                   onKeyDown={(e) => handleThumbnailKeyDown(e, index)}
                   className={cn(
-                    'aspect-square w-20 flex-shrink-0 overflow-hidden rounded-lg border-2 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-offset-2',
+                    'aspect-square w-20 shrink-0 overflow-hidden rounded-lg border-2 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-offset-2',
                     selectedImage === index
                       ? 'border-secondary ring-2 ring-secondary ring-offset-1'
-                      : 'border-transparent hover:border-primary'
+                      : 'border-transparent hover:border-primary',
                   )}
                   aria-label={`Voir l'image ${index + 1} de ${images.length}`}
                   aria-pressed={selectedImage === index}
@@ -164,7 +311,7 @@ export function ProductGallery({ images, productName, onImageChange, selectedInd
                   <img
                     src={normalizeImageApiUrl(image)}
                     alt={`${productName} - Vue ${index + 1}`}
-                    className="w-full h-full object-cover"
+                    className="h-full w-full object-cover"
                     loading="lazy"
                   />
                 </button>
@@ -173,12 +320,13 @@ export function ProductGallery({ images, productName, onImageChange, selectedInd
           </div>
           {canScrollRight && (
             <button
+              type="button"
               onClick={() => scroll('right')}
               onKeyDown={(e) => handleKeyDown(e, 'right')}
-              className="absolute right-0 top-1/2 -translate-y-1/2 z-10 bg-white/90 hover:bg-white shadow-md rounded-full p-2 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-offset-2 min-w-[44px] min-h-[44px] flex items-center justify-center"
-              aria-label="Image suivante"
+              className="absolute right-0 top-1/2 z-10 hidden min-h-[44px] min-w-[44px] -translate-y-1/2 items-center justify-center rounded-full bg-white/90 p-2 shadow-md transition-all duration-200 hover:bg-white focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-offset-2 md:flex"
+              aria-label="Faire défiler les miniatures vers la droite"
             >
-              <ChevronRight className="w-5 h-5 text-text-dark" />
+              <ChevronRight className="h-5 w-5 text-text-dark" />
             </button>
           )}
         </div>
@@ -186,4 +334,3 @@ export function ProductGallery({ images, productName, onImageChange, selectedInd
     </div>
   );
 }
-

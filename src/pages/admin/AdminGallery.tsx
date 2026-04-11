@@ -20,6 +20,9 @@ import {
   isImageApiUrl,
   normalizeImageApiUrl,
 } from '../../lib/imageApi';
+import { GalleryFastScrollRail } from '../../components/admin/GalleryFastScrollRail';
+import { useAdminMainScrollRef } from '../../context/AdminMainScrollContext';
+import { cn } from '../../utils/cn';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -111,7 +114,7 @@ export default function AdminGallery() {
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [gallerySortMode, setGallerySortMode] = useState<GallerySortMode>('date-desc');
 
-  const galleryScrollRef = useRef<HTMLDivElement>(null);
+  const mainScrollRef = useAdminMainScrollRef();
   const [galleryScrubPct, setGalleryScrubPct] = useState(0);
   const [galleryScrubberVisible, setGalleryScrubberVisible] = useState(false);
 
@@ -217,7 +220,12 @@ export default function AdminGallery() {
   );
 
   const updateGalleryScrubMetrics = useCallback(() => {
-    const el = galleryScrollRef.current;
+    if (!mainScrollRef) {
+      setGalleryScrubberVisible(false);
+      setGalleryScrubPct(0);
+      return;
+    }
+    const el = mainScrollRef.current;
     if (!el) return;
     const max = el.scrollHeight - el.clientHeight;
     setGalleryScrubberVisible(max > 16);
@@ -226,7 +234,7 @@ export default function AdminGallery() {
     } else {
       setGalleryScrubPct(0);
     }
-  }, []);
+  }, [mainScrollRef]);
 
   useEffect(() => {
     updateGalleryScrubMetrics();
@@ -235,15 +243,16 @@ export default function AdminGallery() {
   }, [displayedGalleryImages.length, viewMode, currentFolderId, gallerySortMode, updateGalleryScrubMetrics]);
 
   useEffect(() => {
-    const el = galleryScrollRef.current;
-    if (!el) return;
+    if (!mainScrollRef?.current) return;
+    const el = mainScrollRef.current;
     const ro = new ResizeObserver(() => updateGalleryScrubMetrics());
     ro.observe(el);
     return () => ro.disconnect();
-  }, [updateGalleryScrubMetrics]);
+  }, [updateGalleryScrubMetrics, mainScrollRef]);
 
-  const handleGalleryScroll = () => {
-    const el = galleryScrollRef.current;
+  const handleGalleryScroll = useCallback(() => {
+    if (!mainScrollRef) return;
+    const el = mainScrollRef.current;
     if (!el) return;
     const max = el.scrollHeight - el.clientHeight;
     if (max <= 0) {
@@ -251,11 +260,35 @@ export default function AdminGallery() {
       return;
     }
     setGalleryScrubPct((el.scrollTop / max) * 100);
-  };
+  }, [mainScrollRef]);
+
+  useEffect(() => {
+    if (!mainScrollRef?.current) return;
+    const el = mainScrollRef.current;
+    el.addEventListener('scroll', handleGalleryScroll, { passive: true });
+    return () => el.removeEventListener('scroll', handleGalleryScroll);
+  }, [mainScrollRef, handleGalleryScroll]);
+
+  /** Mobile : barre native masquée sur `<main>`, défilement global + curseur à droite. */
+  useEffect(() => {
+    if (!mainScrollRef) return;
+    let cancelled = false;
+    const id = window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        if (cancelled) return;
+        mainScrollRef.current?.classList.add('admin-gallery-main-scroll');
+      });
+    });
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(id);
+      mainScrollRef.current?.classList.remove('admin-gallery-main-scroll');
+    };
+  }, [mainScrollRef]);
 
   const handleGalleryScrubChange = (pct: number) => {
-    const el = galleryScrollRef.current;
-    if (!el) return;
+    if (!mainScrollRef?.current) return;
+    const el = mainScrollRef.current;
     const max = el.scrollHeight - el.clientHeight;
     if (max <= 0) return;
     el.scrollTop = (pct / 100) * max;
@@ -823,35 +856,47 @@ export default function AdminGallery() {
 
       {/* ============= Dossiers (uniquement à la racine) ============= */}
       {!currentFolderId && folders.length > 0 && (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-6">
+        <div className="mb-4 flex flex-wrap gap-2 sm:mb-6 sm:grid sm:grid-cols-2 sm:gap-4 md:grid-cols-3 lg:grid-cols-4">
           {folders.map((folder) => (
             <div
               key={folder.id}
-              className="group bg-white rounded-lg shadow-sm border border-gray-200 p-4 cursor-pointer hover:border-secondary/50 hover:shadow transition-all"
+              className={cn(
+                'group bg-white rounded-lg border border-gray-200 cursor-pointer transition-all',
+                'hover:border-secondary/50 sm:hover:shadow',
+                renamingFolderId === folder.id
+                  ? 'w-full max-w-full p-3 sm:p-4 shadow-sm sm:w-full'
+                  : 'w-fit max-w-full p-2.5 shadow-sm sm:w-full sm:max-w-none sm:p-4 sm:shadow-sm flex flex-row sm:flex-col items-center sm:items-stretch sm:gap-0',
+              )}
             >
               {renamingFolderId === folder.id ? (
-                <div className="flex items-center gap-2">
+                <div className="flex w-full min-w-0 items-center gap-2">
                   <input
                     type="text"
                     value={renameFolderValue}
                     onChange={(e) => setRenameFolderValue(e.target.value)}
                     onKeyDown={(e) => { if (e.key === 'Enter') handleRenameFolder(folder.id); if (e.key === 'Escape') setRenamingFolderId(null); }}
-                    className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-secondary"
+                    className="min-w-0 flex-1 px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-secondary"
                     autoFocus
                   />
-                  <button onClick={() => handleRenameFolder(folder.id)} className="p-1 text-green-600 hover:text-green-800">
+                  <button type="button" onClick={() => handleRenameFolder(folder.id)} className="shrink-0 p-1 text-green-600 hover:text-green-800">
                     <Check size={16} />
                   </button>
-                  <button onClick={() => setRenamingFolderId(null)} className="p-1 text-gray-400 hover:text-gray-600">
+                  <button type="button" onClick={() => setRenamingFolderId(null)} className="shrink-0 p-1 text-gray-400 hover:text-gray-600">
                     <X size={16} />
                   </button>
                 </div>
               ) : (
-                <div onClick={() => { setCurrentFolderId(folder.id); clearSelection(); }}>
-                  <div className="flex items-center gap-3 mb-2">
-                    <FolderOpen size={28} className="text-yellow-500 flex-shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-text-dark truncate">{folder.name}</p>
+                <div
+                  className="min-w-0 max-sm:shrink sm:w-full"
+                  onClick={() => { setCurrentFolderId(folder.id); clearSelection(); }}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setCurrentFolderId(folder.id); clearSelection(); } }}
+                  role="button"
+                  tabIndex={0}
+                >
+                  <div className="flex items-center gap-2 sm:gap-3 sm:mb-2">
+                    <FolderOpen className="h-5 w-5 shrink-0 text-yellow-500 sm:h-7 sm:w-7" aria-hidden />
+                    <div className="min-w-0 sm:flex-1">
+                      <p className="max-w-[min(16rem,85vw)] truncate font-medium text-text-dark text-sm sm:max-w-none sm:text-base">{folder.name}</p>
                       <p className="text-xs text-gray-500">
                         {imageCountInFolder(folder.id)} photo{imageCountInFolder(folder.id) !== 1 ? 's' : ''}
                       </p>
@@ -860,17 +905,23 @@ export default function AdminGallery() {
                 </div>
               )}
               {renamingFolderId !== folder.id && (
-                <div className="flex items-center gap-1 mt-2 pt-2 border-t border-gray-100 opacity-0 group-hover:opacity-100 transition-opacity">
+                <div
+                  className={cn(
+                    'hidden shrink-0 items-center gap-1 border-t border-gray-100 pt-2 opacity-0 transition-opacity sm:flex sm:mt-2 sm:group-hover:opacity-100',
+                  )}
+                >
                   <button
+                    type="button"
                     onClick={(e) => { e.stopPropagation(); setRenamingFolderId(folder.id); setRenameFolderValue(folder.name); }}
-                    className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded"
+                    className="rounded p-1.5 text-gray-500 hover:bg-blue-50 hover:text-blue-600"
                     title="Renommer"
                   >
                     <Edit size={14} />
                   </button>
                   <button
+                    type="button"
                     onClick={(e) => { e.stopPropagation(); handleDeleteFolder(folder); }}
-                    className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded"
+                    className="rounded p-1.5 text-gray-500 hover:bg-red-50 hover:text-red-600"
                     title="Supprimer le dossier"
                   >
                     <Trash2 size={14} />
@@ -914,32 +965,6 @@ export default function AdminGallery() {
         </div>
       ) : (
         <>
-          {galleryScrubberVisible && displayedGalleryImages.length > 0 && (
-            <div className="md:hidden mb-3 px-0.5">
-              <label htmlFor="gallery-scroll-scrub" className="block text-xs font-medium text-gray-600 mb-1">
-                Défilement rapide
-              </label>
-              <input
-                id="gallery-scroll-scrub"
-                type="range"
-                min={0}
-                max={100}
-                step={1}
-                value={galleryScrubPct}
-                onChange={(e) => handleGalleryScrubChange(Number(e.target.value))}
-                className="w-full h-2 accent-secondary cursor-pointer"
-                aria-valuenow={Math.round(galleryScrubPct)}
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-label="Défilement rapide dans la galerie"
-              />
-            </div>
-          )}
-          <div
-            ref={galleryScrollRef}
-            onScroll={handleGalleryScroll}
-            className="max-md:max-h-[min(70vh,28rem)] max-md:overflow-y-auto max-md:-mx-1 max-md:px-1 md:overflow-visible md:max-h-none scrollbar-thin"
-          >
             {viewMode === 'grid' ? (
               /* ============= Vue vignettes ============= */
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
@@ -1062,7 +1087,15 @@ export default function AdminGallery() {
                 </table>
               </div>
             )}
-          </div>
+          {galleryScrubberVisible && displayedGalleryImages.length > 0 && mainScrollRef && (
+            <GalleryFastScrollRail
+              scrollRef={mainScrollRef}
+              scrollPct={galleryScrubPct}
+              onSeek={handleGalleryScrubChange}
+              placement="fixedPage"
+              hideOnDesktop={false}
+            />
+          )}
         </>
       )}
 
