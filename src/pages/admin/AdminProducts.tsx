@@ -1,8 +1,8 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { supabase } from '../../lib/supabase';
+import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { Product } from '../../types';
-import { Plus, Edit, Trash2, Upload, X, Check, Package, Layers, ChevronDown, ChevronUp, Loader2, Image as ImageIcon, FolderOpen, Pipette } from 'lucide-react';
+import { Plus, Edit, Trash2, Upload, X, Check, Package, Layers, ChevronDown, ChevronUp, Loader2, Image as ImageIcon, FolderOpen, Pipette, Sparkles } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import toast from 'react-hot-toast';
 import { Offcanvas } from '../../components/ui/Offcanvas';
@@ -35,6 +35,68 @@ import { detectColorsFromImages } from '../../utils/colorDetection';
 import { formatAppError, extractErrorMessage } from '../../utils/errors';
 import { cn } from '../../utils/cn';
 import { GalleryFastScrollRail } from '../../components/admin/GalleryFastScrollRail';
+import { analyzeVisionProductImage, pickCategoryFromVisionJson } from '../../lib/hfProductVision';
+import { ensureProductCategory } from '../../lib/ensureProductCategory';
+import { buildVisionFormAutoFill } from '../../lib/visionFormApply';
+import { matchVisionCategoryToExisting } from '../../lib/categoryVisionMatch';
+
+/** Message utilisateur explicite pour les échecs d’analyse vision (réseau, HF, JSON, image). */
+function visionAnalysisErrorMessage(error: unknown): string {
+  const extracted = extractErrorMessage(error);
+  const haystack = `${extracted ?? ''} ${error instanceof Error ? error.message : ''}`.toLowerCase();
+  if (haystack.includes('json') || haystack.includes('objet') || haystack.includes('markdown')) {
+    return (
+      extracted ??
+      'Le modèle n’a pas renvoyé une réponse exploitable. Réessayez ou changez VITE_HF_VISION_MODEL.'
+    );
+  }
+  if (haystack.includes('401') || haystack.includes('403') || haystack.includes('refusé')) {
+    return 'Accès Hugging Face refusé : vérifiez VITE_HF_API_TOKEN (token valide et accès inference).';
+  }
+  if (haystack.includes('429') || haystack.includes('trop de requêtes') || haystack.includes('rate')) {
+    return 'Trop de requêtes vers Hugging Face. Patientez une minute puis réessayez.';
+  }
+  if (haystack.includes('503') || haystack.includes('502') || haystack.includes('indisponible')) {
+    return 'Le service Hugging Face est temporairement indisponible. Réessayez plus tard.';
+  }
+  if (haystack.includes('access-control') || haystack.includes('cors')) {
+    return 'Blocage CORS : le navigateur ne peut pas télécharger l’image depuis un autre domaine. Utilisez une URL d’image en https absolue (ex. votre API images) : elle est envoyée directement à Hugging Face, sans fetch depuis la boutique.';
+  }
+  if (
+    haystack.includes('could not be processed') ||
+    haystack.includes('possibly corrupt') ||
+    haystack.includes('vision_image_fetch') ||
+    haystack.includes('reverse-proxy') ||
+    haystack.includes('/api/images/')
+  ) {
+    return (
+      extracted ||
+      (error instanceof Error ? error.message : null) ||
+      'Hugging Face n’a pas pu lire l’image (URL distante ou format). Configurez un proxy nginx pour exposer /api/images/ sous le domaine de la boutique, ou définissez VITE_VISION_IMAGE_FETCH_ORIGIN. Sinon, vérifiez que l’URL est accessible publiquement sans blocage pour les serveurs HF.'
+    );
+  }
+  if (haystack.includes('téléchargement') && haystack.includes('bloqué')) {
+    return (
+      extracted ??
+      'Lecture de l’image impossible (réseau ou CORS). En production, privilégiez des URLs https absolues pour les photos produit.'
+    );
+  }
+  if (
+    haystack.includes('failed to fetch') ||
+    haystack.includes('typeerror') ||
+    haystack.includes('network')
+  ) {
+    return formatAppError(
+      error,
+      extracted ??
+        'Connexion impossible (réseau ou serveur). Pour l’image : une URL https publique permet à Hugging Face de la charger sans passer par votre navigateur.',
+    );
+  }
+  return formatAppError(
+    error,
+    extracted ?? "L’analyse de l’image par l’IA a échoué. Vérifiez le token, le modèle et la connexion.",
+  );
+}
 
 type ProductFormErrors = Partial<
   Record<'name' | 'category' | 'price' | 'stock' | 'salePrice' | 'general', string>
@@ -199,7 +261,7 @@ export default function AdminProducts() {
   const confirm = useConfirm();
   const [searchParams, setSearchParams] = useSearchParams();
   const { adminUser } = useAdminAuth();
-  const { categories } = useCategories();
+  const { categories, reload: reloadCategories } = useCategories();
   const hasLoadedProductsRef = useRef(false);
   const [products, setProducts] = useState<Product[]>([]);
   /** Produits dont au moins une ligne `product_variants` a stock > 0 (liste admin). */
@@ -321,6 +383,7 @@ export default function AdminProducts() {
   const galleryUserEditedRef = useRef(false);
   /** Évite un double traitement du paramètre d’URL `fromGallery` (ex. React Strict Mode). */
   const galleryFromUrlHandledRef = useRef(false);
+  const [isVisionAnalyzing, setIsVisionAnalyzing] = useState(false);
   /** Une fois par session d’édition : corrige hasVariants si la BDD contient des variantes mais has_variants est resté à false */
   const autoEnableVariantsFromApiRef = useRef(false);
   const nameFieldRef = useRef<HTMLInputElement>(null);
@@ -1224,6 +1287,93 @@ export default function AdminProducts() {
     setIsGalleryPickerOpen(true);
   };
 
+  const handleVisionProductAnalyze = useCallback(async () => {
+    const useVisionEdge = import.meta.env.VITE_VISION_ANALYZE_EDGE === 'true';
+    const token = (import.meta.env.VITE_HF_API_TOKEN as string | undefined)?.trim();
+    if (!useVisionEdge && !token) {
+      toast.error(
+        'Définissez VITE_HF_API_TOKEN, ou activez VITE_VISION_ANALYZE_EDGE=true et déployez la fonction Supabase vision-product-analyze (secret HF_API_TOKEN).',
+      );
+      return;
+    }
+    const rawUrl =
+      selectedGalleryImages[0]?.image_url?.trim() || formData.images[0]?.trim();
+    if (!rawUrl) {
+      toast.error('Ajoutez au moins une image (galerie ou upload) avant d’analyser.');
+      return;
+    }
+    const imageUrl = normalizeImageApiUrl(rawUrl);
+    setIsVisionAnalyzing(true);
+    try {
+      const { parsed } = await analyzeVisionProductImage({
+        normalizedImageUrl: imageUrl,
+        categoryNames: categories.map((c) => c.name),
+        apiToken: token ?? '',
+      });
+
+      const patch = buildVisionFormAutoFill(parsed);
+      const catHint = pickCategoryFromVisionJson(parsed);
+      let categoryResolved: string | null = null;
+      let categoryCreated = false;
+
+      if (catHint) {
+        const catMatch = matchVisionCategoryToExisting(catHint, categories);
+        if (catMatch.type === 'existing') {
+          categoryResolved = catMatch.name;
+        } else if (catMatch.suggestedName.trim()) {
+          if (isSupabaseConfigured) {
+            try {
+              const result = await ensureProductCategory(
+                catMatch.suggestedName,
+                categories,
+                reloadCategories,
+              );
+              if (result.canonicalName) {
+                categoryResolved = result.canonicalName;
+                categoryCreated = result.created;
+              }
+            } catch (e) {
+              console.error(e);
+              toast.error(
+                extractErrorMessage(e) ??
+                  'La catégorie proposée n’a pas pu être enregistrée en base.',
+              );
+            }
+          } else {
+            categoryResolved = catMatch.suggestedName;
+          }
+        }
+      }
+
+      setFormData((prev) => {
+        const next = { ...prev };
+        if (patch.name !== null) next.name = patch.name;
+        if (patch.description !== null) next.description = patch.description;
+        if (patch.composition !== null) next.composition = patch.composition;
+        if (patch.brand !== null) next.brand = patch.brand;
+        if (patch.sizes !== null) next.sizes = patch.sizes;
+        if (categoryResolved) next.category = categoryResolved;
+        return next;
+      });
+
+      if (patch.selectedColors.length > 0) {
+        setSelectedColors(patch.selectedColors);
+      }
+
+      toast.success(
+        categoryCreated && categoryResolved
+          ? `Champs préremplis — nouvelle catégorie : « ${categoryResolved} ».`
+          : 'Champs préremplis à partir de l’analyse.',
+      );
+    } catch (e) {
+      console.error(e);
+      const errMsg = visionAnalysisErrorMessage(e);
+      toast.error(errMsg, { id: 'vision-analysis-error', duration: 9000 });
+    } finally {
+      setIsVisionAnalyzing(false);
+    }
+  }, [categories, reloadCategories, selectedGalleryImages, formData.images]);
+
   const toggleGalleryImageSelection = (img: GalleryImageItem) => {
     setSelectedGalleryImages(prev => {
       const exists = prev.find(s => s.id === img.id);
@@ -1900,6 +2050,16 @@ export default function AdminProducts() {
                 'Certains champs sont invalides ou incomplets. Vérifiez les messages sous chaque champ.'}
             </div>
           )}
+          {isVisionAnalyzing && (
+            <div
+              className="flex items-center gap-2 rounded-md border border-secondary/30 bg-secondary/5 px-3 py-2.5 text-sm text-gray-800"
+              role="status"
+              aria-live="polite"
+            >
+              <Loader2 className="h-4 w-4 shrink-0 animate-spin text-secondary" aria-hidden />
+              <span>Analyse vision en cours… Les champs remplis par l’IA sont temporairement verrouillés.</span>
+            </div>
+          )}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="admin-product-name">
@@ -1914,12 +2074,16 @@ export default function AdminProducts() {
                   setFormData({ ...formData, name: e.target.value });
                   clearFieldError('name');
                 }}
+                disabled={isVisionAnalyzing}
                 aria-invalid={Boolean(fieldErrors.name)}
                 aria-describedby={fieldErrors.name ? 'admin-product-name-error' : undefined}
+                aria-busy={isVisionAnalyzing}
                 autoComplete="off"
+                placeholder={isVisionAnalyzing ? 'Analyse IA…' : undefined}
                 className={cn(
                   'w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-secondary',
-                  fieldErrors.name ? 'border-red-600' : 'border-gray-300'
+                  fieldErrors.name ? 'border-red-600' : 'border-gray-300',
+                  isVisionAnalyzing && 'cursor-wait opacity-60'
                 )}
               />
               {fieldErrors.name && (
@@ -1940,11 +2104,14 @@ export default function AdminProducts() {
                   setFormData({ ...formData, category: e.target.value });
                   clearFieldError('category');
                 }}
+                disabled={isVisionAnalyzing}
                 aria-invalid={Boolean(fieldErrors.category)}
                 aria-describedby={fieldErrors.category ? 'admin-product-category-error' : undefined}
+                aria-busy={isVisionAnalyzing}
                 className={cn(
                   'w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-secondary',
-                  fieldErrors.category ? 'border-red-600' : 'border-gray-300'
+                  fieldErrors.category ? 'border-red-600' : 'border-gray-300',
+                  isVisionAnalyzing && 'cursor-wait opacity-60'
                 )}
               >
                 <option value="">Sélectionner une catégorie</option>
@@ -2021,44 +2188,77 @@ export default function AdminProducts() {
               )}
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Marque</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="admin-product-brand">
+                Marque
+              </label>
               <input
+                id="admin-product-brand"
                 type="text"
                 value={formData.brand}
                 onChange={(e) => setFormData({ ...formData, brand: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-secondary"
+                disabled={isVisionAnalyzing}
+                aria-busy={isVisionAnalyzing}
+                placeholder={isVisionAnalyzing ? 'Analyse IA…' : undefined}
+                className={cn(
+                  'w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-secondary',
+                  isVisionAnalyzing && 'cursor-wait opacity-60'
+                )}
               />
             </div>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="admin-product-description">
+              Description
+            </label>
             <textarea
+              id="admin-product-description"
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
               rows={4}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-secondary"
+              disabled={isVisionAnalyzing}
+              aria-busy={isVisionAnalyzing}
+              placeholder={isVisionAnalyzing ? 'Analyse IA…' : undefined}
+              className={cn(
+                'w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-secondary',
+                isVisionAnalyzing && 'cursor-wait opacity-60'
+              )}
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Composition</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="admin-product-composition">
+              Composition
+            </label>
             <textarea
+              id="admin-product-composition"
               value={formData.composition}
               onChange={(e) => setFormData({ ...formData, composition: e.target.value })}
               rows={2}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-secondary"
+              disabled={isVisionAnalyzing}
+              aria-busy={isVisionAnalyzing}
+              placeholder={isVisionAnalyzing ? 'Analyse IA…' : undefined}
+              className={cn(
+                'w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-secondary',
+                isVisionAnalyzing && 'cursor-wait opacity-60'
+              )}
             />
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="admin-product-sizes">
                 Tailles (séparées par des virgules)
               </label>
               <input
+                id="admin-product-sizes"
                 type="text"
                 value={formData.sizes}
                 onChange={(e) => setFormData({ ...formData, sizes: e.target.value })}
-                placeholder="S, M, L, XL"
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-secondary"
+                placeholder={isVisionAnalyzing ? 'Analyse IA…' : 'S, M, L, XL'}
+                disabled={isVisionAnalyzing}
+                aria-busy={isVisionAnalyzing}
+                className={cn(
+                  'w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-secondary',
+                  isVisionAnalyzing && 'cursor-wait opacity-60'
+                )}
               />
             </div>
             <div>
@@ -2093,6 +2293,7 @@ export default function AdminProducts() {
                         >
                           <button
                             type="button"
+                            disabled={isVisionAnalyzing}
                             onClick={() => {
                               if (predefinedColor) {
                                 toggleColor(predefinedColor);
@@ -2100,7 +2301,7 @@ export default function AdminProducts() {
                                 removeColor(selectedColor);
                               }
                             }}
-                            className="relative w-8 h-8 rounded-full transition-all duration-300 border-2 border-gray-200 hover:border-gray-400"
+                            className="relative w-8 h-8 rounded-full transition-all duration-300 border-2 border-gray-200 hover:border-gray-400 disabled:cursor-wait disabled:opacity-50"
                             style={{ 
                               backgroundColor: displayHex,
                               background: displayHex
@@ -2117,8 +2318,9 @@ export default function AdminProducts() {
                           {selectedColor.custom && (
                             <button
                               type="button"
+                              disabled={isVisionAnalyzing}
                               onClick={() => removeColor(selectedColor)}
-                              className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-[9px] font-bold hover:bg-red-600 z-10"
+                              className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-[9px] font-bold hover:bg-red-600 z-10 disabled:pointer-events-none disabled:opacity-0"
                               title="Supprimer cette couleur"
                             >
                               ×
@@ -2134,9 +2336,10 @@ export default function AdminProducts() {
                   {/* Bouton pour ouvrir la modal */}
                   <button
                     type="button"
+                    disabled={isVisionAnalyzing}
                     onClick={() => setIsColorModalOpen(true)}
-                    className="w-8 h-8 rounded-full border-2 border-dashed border-gray-400 hover:border-gray-600 hover:bg-gray-50 transition-all duration-300 flex items-center justify-center text-gray-500 hover:text-gray-700"
-                    title="Ajouter des couleurs"
+                    className="w-8 h-8 rounded-full border-2 border-dashed border-gray-400 hover:border-gray-600 hover:bg-gray-50 transition-all duration-300 flex items-center justify-center text-gray-500 hover:text-gray-700 disabled:cursor-wait disabled:opacity-50"
+                    title={isVisionAnalyzing ? 'Analyse IA en cours…' : 'Ajouter des couleurs'}
                   >
                     <Plus size={16} />
                   </button>
@@ -2332,14 +2535,39 @@ export default function AdminProducts() {
               <label className="block text-sm font-medium text-gray-700 sm:mb-0">
                 Images du produit
               </label>
-              <Button
-                type="button"
-                onClick={openGalleryPicker}
-                className="inline-flex w-full items-center justify-center gap-2 bg-secondary hover:bg-secondary/90 text-white px-5 py-2.5 text-sm font-medium rounded-lg shadow-sm sm:w-auto sm:shrink-0"
-              >
-                <ImageIcon size={18} aria-hidden />
-                Sélectionner depuis la galerie
-              </Button>
+              <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:justify-end">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="md"
+                  onClick={handleVisionProductAnalyze}
+                  disabled={
+                    isVisionAnalyzing ||
+                    (!selectedGalleryImages[0]?.image_url?.trim() && !formData.images[0]?.trim())
+                  }
+                  className="inline-flex w-full items-center justify-center gap-2 px-5 py-2.5 text-sm sm:w-auto sm:shrink-0"
+                  title={
+                    import.meta.env.VITE_VISION_ANALYZE_EDGE === 'true'
+                      ? 'Analyse via la fonction Supabase vision-product-analyze (session admin).'
+                      : 'Première image + Hugging Face (VITE_HF_API_TOKEN).'
+                  }
+                >
+                  {isVisionAnalyzing ? (
+                    <Loader2 className="animate-spin shrink-0" size={18} aria-hidden />
+                  ) : (
+                    <Sparkles size={18} aria-hidden />
+                  )}
+                  Analyser l’image (IA)
+                </Button>
+                <Button
+                  type="button"
+                  onClick={openGalleryPicker}
+                  className="inline-flex w-full items-center justify-center gap-2 bg-secondary hover:bg-secondary/90 text-white px-5 py-2.5 text-sm font-medium rounded-lg shadow-sm sm:w-auto sm:shrink-0"
+                >
+                  <ImageIcon size={18} aria-hidden />
+                  Sélectionner depuis la galerie
+                </Button>
+              </div>
             </div>
             {formData.hasVariants && editingProduct && selectedGalleryImages.length === 0 && (
               <p className="mt-2 text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">

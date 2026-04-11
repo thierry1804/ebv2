@@ -1,0 +1,6 @@
+project_id = "eshop"
+
+# Permet au navigateur d’envoyer un préflight OPTIONS sans JWT.
+# L’auth reste appliquée dans la fonction sur POST (getUser()).
+[functions.vision-product-analyze]
+verify_jwt = false

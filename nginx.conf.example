@@ -25,6 +25,25 @@ server {
         add_header Expires 0;
     }
 
+    # ── Images produit (OBLIGATOIRE en prod si l’API est sur un autre host) ──
+    # Sans ce bloc, GET /api/images/*.webp tombe dans le SPA (try_files → index.html) :
+    # réponse 200 + Content-Type: text/html → l’analyse IA et les fetch navigateur échouent.
+    # Adapter api.eshopbyvalsue.mg si besoin.
+    location /api/images/ {
+        proxy_pass https://api.eshopbyvalsue.mg;
+        proxy_http_version 1.1;
+        proxy_ssl_server_name on;
+        proxy_set_header Host api.eshopbyvalsue.mg;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_connect_timeout 30s;
+        proxy_read_timeout 60s;
+        # Si votre API exige une clé pour GET /api/images/ : préférez la injecter ici (fichier
+        # non versionné) plutôt que depuis le navigateur.
+        # proxy_set_header X-API-Key "votre-cle-serveur";
+    }
+
     # Rediriger toutes les requêtes vers index.html pour React Router
     location / {
         try_files $uri $uri/ /index.html;
