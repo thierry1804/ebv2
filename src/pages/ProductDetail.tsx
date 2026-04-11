@@ -289,6 +289,51 @@ export default function ProductDetail() {
     }
   }, [selectedVariant?.id, selectedVariant?.colors, hasVariants, product?.colors]);
 
+  // Pour les variantes-images : est-ce que la variante active est en stock ?
+  // null = l'image active n'est pas une variante (galerie seulement)
+  const imageVariantInStock = isImageVariants
+    ? (imageVariant ? imageVariant.isAvailable && imageVariant.stock > 0 : null)
+    : null;
+
+  /** Éviter le double message quand le bloc « variante par image » couvre déjà l’indisponibilité */
+  const showShopOutOfStockBanner =
+    currentStock <= 0 && !(isImageVariants && imageVariant);
+  const activeGalleryImageUrl =
+    galleryImages.length > 0
+      ? normalizeImageApiUrl(galleryImages[Math.min(activeImageIndex, galleryImages.length - 1)] || '')
+      : undefined;
+
+  /** Lien « Commander sur Duo Import » — avant tout return pour respecter l’ordre des Hooks. */
+  const duoImportHref = useMemo(() => {
+    if (!product) {
+      return 'https://duoimport.mg/commande-import?h=';
+    }
+    const variantColor = selectedVariant?.colors?.[0]?.name ?? null;
+    const resolvedColor = variantColor || selectedColor || undefined;
+    const imgUrl =
+      activeGalleryImageUrl ||
+      (selectedVariant?.images?.[0] ? normalizeImageApiUrl(selectedVariant.images[0]) : '') ||
+      (imageVariant?.images?.[0] ? normalizeImageApiUrl(imageVariant.images[0]) : '') ||
+      (product.images?.[0] ? normalizeImageApiUrl(product.images[0]) : '') ||
+      '';
+    const data = JSON.stringify({
+      img: imgUrl,
+      qty: quantity,
+      color: resolvedColor,
+      name: product.name,
+      price: displayPrice,
+    });
+    return `https://duoimport.mg/commande-import?h=${btoa(encodeURIComponent(data))}`;
+  }, [
+    product,
+    activeGalleryImageUrl,
+    selectedVariant,
+    imageVariant,
+    quantity,
+    displayPrice,
+    selectedColor,
+  ]);
+
   if (!product) {
     return (
       <div className="container mx-auto px-4 py-16 text-center">
@@ -299,7 +344,7 @@ export default function ProductDetail() {
       </div>
     );
   }
-  
+
   const hasSale = product.isOnSale && product.salePrice;
   const inWishlist = isInWishlist(product.id);
 
@@ -307,16 +352,6 @@ export default function ProductDetail() {
   const relatedProducts = products
     .filter((p) => p.category === product.category && p.id !== product.id)
     .slice(0, 4);
-
-  // Pour les variantes-images : est-ce que la variante active est en stock ?
-  // null = l'image active n'est pas une variante (galerie seulement)
-  const imageVariantInStock = isImageVariants
-    ? (imageVariant ? imageVariant.isAvailable && imageVariant.stock > 0 : null)
-    : null;
-  const activeGalleryImageUrl =
-    galleryImages.length > 0
-      ? normalizeImageApiUrl(galleryImages[Math.min(activeImageIndex, galleryImages.length - 1)] || '')
-      : undefined;
 
   const handleAddToCart = () => {
     // Résoudre la couleur : couleur de la variante > couleur sélectionnée manuellement
@@ -467,9 +502,10 @@ export default function ProductDetail() {
         Retour
       </button>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 mb-1">
+      <div className="grid grid-cols-1 gap-12 lg:grid-cols-2 lg:items-stretch mb-1">
         {/* Galerie */}
-        <div>
+        <div className="min-w-0 lg:flex lg:h-full lg:min-h-0 lg:flex-col">
+          <div className="min-h-0 w-full lg:flex lg:flex-1 lg:flex-col">
           <ProductGallery
             images={galleryImages}
             productName={product.name}
@@ -482,30 +518,33 @@ export default function ProductDetail() {
             }
             selectedIndex={galleryIndexControlled ? activeImageIndex : undefined}
           />
+          </div>
         </div>
 
-        {/* Informations */}
-        <div>
-          <div className="mb-4">
+        {/* Informations — même rayon que la galerie (rounded-lg), hauteur alignée sur lg */}
+        <div className="min-w-0 flex flex-col lg:h-full lg:min-h-0 lg:pl-2">
+          <div className="flex min-h-0 flex-col rounded-lg border border-neutral-support/25 bg-white p-6 shadow-sm sm:p-8 lg:h-full">
+          <div className="flex min-h-0 flex-1 flex-col">
+          <div className="mb-4 flex flex-wrap items-center gap-2">
             {product.isNew && (
-              <span className="inline-block bg-accent text-white px-3 py-1 rounded text-sm font-medium mb-2">
+              <span className="inline-block rounded-md bg-accent px-3 py-1 text-sm font-medium text-white">
                 Nouveau
               </span>
             )}
             {hasSale && (
-              <span className="inline-block bg-secondary text-white px-3 py-1 rounded text-sm font-medium mb-2 ml-2">
+              <span className="inline-block rounded-md bg-secondary px-3 py-1 text-sm font-medium text-white">
                 En solde
               </span>
             )}
           </div>
 
-          <h1 className="text-4xl font-heading font-bold text-text-dark mb-4">
+          <h1 className="mb-3 font-heading text-3xl font-bold leading-tight tracking-tight text-text-dark sm:text-4xl">
             {product.name}
           </h1>
 
           {/* Note et avis */}
-          <div className="flex items-center gap-2 mb-4">
-            <div className="flex items-center gap-1">
+          <div className="mb-6 flex flex-wrap items-center gap-2 border-b border-neutral-support/20 pb-5">
+            <div className="flex items-center gap-0.5">
               {Array.from({ length: 5 }).map((_, i) => (
                 <Star
                   key={i}
@@ -518,42 +557,41 @@ export default function ProductDetail() {
                 />
               ))}
             </div>
-            <span className="text-text-dark/80">
+            <span className="text-sm text-text-dark/65">
               {product.rating.toFixed(1)} ({product.reviewCount} avis)
             </span>
           </div>
 
           {/* Prix */}
-          <div className="mb-6">
+          <div className="mb-8 rounded-xl bg-neutral-support/8 px-4 py-4 sm:px-5 sm:py-5">
             {hasVariants && !selectedVariant ? (
-              // Afficher la plage de prix si variantes et aucune sélectionnée
-              <span className="text-3xl font-bold text-text-dark">
+              <span className="text-3xl font-bold tracking-tight text-text-dark sm:text-4xl">
                 {priceRange.min === priceRange.max 
                   ? formatPrice(priceRange.min)
                   : `${formatPrice(priceRange.min)} - ${formatPrice(priceRange.max)}`
                 }
               </span>
             ) : (
-              <>
+              <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                 {hasSale && !hasVariants && (
-                  <span className="text-xl text-neutral-support line-through mr-2">
+                  <span className="text-lg text-neutral-support line-through sm:text-xl">
                     {formatPrice(product.price)}
                   </span>
                 )}
                 {selectedVariant?.compareAtPrice && (
-                  <span className="text-xl text-neutral-support line-through mr-2">
+                  <span className="text-lg text-neutral-support line-through sm:text-xl">
                     {formatPrice(selectedVariant.compareAtPrice)}
                   </span>
                 )}
-                <span className={`text-3xl font-bold ${hasSale || selectedVariant?.compareAtPrice ? 'text-secondary' : 'text-text-dark'}`}>
+                <span className={`text-3xl font-bold tracking-tight sm:text-4xl ${hasSale || selectedVariant?.compareAtPrice ? 'text-secondary' : 'text-text-dark'}`}>
                   {formatPrice(displayPrice)}
                 </span>
-              </>
+              </div>
             )}
           </div>
 
           {/* Sélecteurs */}
-          <div className="space-y-6 mb-8">
+          <div className="mb-0 space-y-6">
             {/* Sélecteurs de variantes (si le produit a des variantes) */}
             {hasVariants && variantOptions.length > 0 && (
               <>
@@ -690,53 +728,51 @@ export default function ProductDetail() {
                 </div>
               );
             })()}
-            
-            <QuantitySelector
-              quantity={quantity}
-              onIncrease={() => setQuantity((q) => q + 1)}
-              onDecrease={() => setQuantity((q) => Math.max(1, q - 1))}
-              max={currentStock}
-              stockStatus={currentStock > 0 ? 'in_stock' : 'out_of_stock'}
-            />
-            {currentStock > 0 && currentStock <= 5 && !isImageVariants && (
-              <div className="mt-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                <p className="text-sm text-yellow-800 font-medium">
-                  ⚠️ Attention : Il ne reste que {currentStock} exemplaire{currentStock > 1 ? 's' : ''} en stock !
+
+            {showShopOutOfStockBanner && (
+              <div className="rounded-xl border border-amber-200/90 bg-gradient-to-br from-amber-50 to-orange-50/60 px-4 py-4 sm:px-5">
+                <p className="font-heading text-base font-semibold text-amber-950">
+                  Indisponible sur la boutique
                 </p>
-              </div>
-            )}
-            {currentStock === 0 && !isImageVariants && (
-              <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded-lg">
-                <p className="text-sm text-red-800 font-medium">
+                <p className="mt-1.5 text-sm leading-relaxed text-amber-900/90">
                   {hasVariants && !selectedVariant
-                    ? '❌ Sélectionnez une variante'
-                    : '❌ Ce produit est actuellement en rupture de stock.'
-                  }
+                    ? 'Choisissez une autre variante si elle est en stock, ou commandez ce modèle chez Duo Import via le bouton ci-dessous.'
+                    : 'Ce modèle n’est pas en stock sur ByValsue. Vous pouvez le commander auprès de notre partenaire Duo Import.'}
                 </p>
               </div>
             )}
+
+            {currentStock > 0 && (
+              <>
+                <QuantitySelector
+                  quantity={quantity}
+                  onIncrease={() => setQuantity((q) => q + 1)}
+                  onDecrease={() => setQuantity((q) => Math.max(1, q - 1))}
+                  max={currentStock}
+                  stockStatus="in_stock"
+                />
+                {currentStock <= 5 && !isImageVariants && (
+                  <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-3">
+                    <p className="text-sm font-medium text-yellow-900">
+                      Il ne reste que {currentStock} exemplaire{currentStock > 1 ? 's' : ''} en stock.
+                    </p>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
           </div>
 
           {/* Actions */}
-          <div className="flex gap-4 mb-8">
-            {isImageVariants && imageVariant && imageVariantInStock === false ? (
+          <div className="mt-auto flex shrink-0 flex-col gap-3 border-t border-neutral-support/20 pt-4 sm:flex-row sm:items-stretch">
+            {currentStock <= 0 ? (
               <a
-                href={(() => {
-                  const imgUrl = activeGalleryImageUrl || imageVariant.images?.[0] || '';
-                  const data = JSON.stringify({
-                    img: imgUrl,
-                    qty: quantity,
-                    color: selectedColor || undefined,
-                    name: product.name,
-                    price: displayPrice,
-                  });
-                    return `https://duoimport.mg/commande-import?h=${btoa(encodeURIComponent(data))}`;
-                })()}
+                href={duoImportHref}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-amber-600 hover:bg-amber-700 text-white font-medium rounded-lg transition-colors text-lg"
+                className="flex min-h-[52px] flex-1 items-center justify-center gap-2 rounded-xl bg-amber-600 px-6 py-3.5 text-base font-semibold text-white shadow-sm transition-colors hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 sm:text-lg"
               >
-                <ExternalLink size={20} />
+                <ExternalLink size={20} className="shrink-0" aria-hidden />
                 Commander sur Duo Import
               </a>
             ) : (
@@ -744,28 +780,31 @@ export default function ProductDetail() {
                 variant="primary"
                 size="lg"
                 onClick={handleAddToCart}
-                className="flex-1 flex items-center justify-center gap-2"
+                className="flex min-h-[52px] flex-1 items-center justify-center gap-2 rounded-xl shadow-sm"
               >
                 <ShoppingCart size={20} />
                 Ajouter au panier
               </Button>
             )}
             <button
+              type="button"
               onClick={() => {
                 toggleWishlist(product);
                 toast.success(
                   inWishlist ? 'Retiré de la wishlist' : 'Ajouté à la wishlist'
                 );
               }}
-              className={`p-4 rounded-lg border-2 transition-colors ${
+              className={cn(
+                'flex min-h-[52px] min-w-[52px] shrink-0 items-center justify-center rounded-xl border-2 transition-colors focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-offset-2 sm:self-auto',
                 inWishlist
                   ? 'border-secondary bg-secondary text-white'
                   : 'border-neutral-support text-text-dark hover:border-primary'
-              }`}
+              )}
               aria-label={inWishlist ? 'Retirer de la wishlist' : 'Ajouter à la wishlist'}
             >
               <Heart size={24} fill={inWishlist ? 'currentColor' : 'none'} />
             </button>
+          </div>
           </div>
         </div>
       </div>

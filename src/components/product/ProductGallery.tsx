@@ -202,44 +202,61 @@ export function ProductGallery({ images, productName, onImageChange, selectedInd
   }
 
   return (
-    <div className="space-y-4">
-      {/* Mobile : bandeau horizontal type galerie Android (scroll + snap) */}
+    <div className="flex min-h-0 flex-1 flex-col gap-4 lg:min-h-0">
+      {/* Plusieurs images : un seul bloc racine pour éviter space-y sur l’image desktop (alignement avec la colonne produit) */}
       {images.length > 1 && (
-        <div className="md:hidden">
-          <div
-            ref={mobileCarouselRef}
-            className={cn(
-              'flex aspect-square w-full touch-pan-x snap-x snap-mandatory overflow-x-auto scroll-smooth rounded-lg bg-neutral-light',
-              '[-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
-              'overscroll-x-contain',
-            )}
-            role="region"
-            aria-roledescription="carrousel"
-            aria-label={`Photos de ${productName}, faire défiler horizontalement`}
-          >
-            {images.map((image, index) => (
-              <div
-                key={index}
-                className="h-full w-full min-w-full shrink-0 snap-start overflow-hidden"
-              >
-                <ImageZoom
-                  src={normalizeImageApiUrl(image)}
-                  alt={`${productName} - Vue ${index + 1} sur ${images.length}`}
-                  className="h-full w-full object-cover select-none"
+        <div>
+          {/* Mobile : bandeau horizontal type galerie Android (scroll + snap) */}
+          <div className="md:hidden">
+            <div
+              ref={mobileCarouselRef}
+              className={cn(
+                'flex aspect-square w-full touch-pan-x snap-x snap-mandatory overflow-x-auto scroll-smooth rounded-lg bg-neutral-light',
+                '[-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
+                'overscroll-x-contain',
+              )}
+              role="region"
+              aria-roledescription="carrousel"
+              aria-label={`Photos de ${productName}, faire défiler horizontalement`}
+            >
+              {images.map((image, index) => (
+                <div
+                  key={index}
+                  className="h-full w-full min-w-full shrink-0 snap-start overflow-hidden"
+                >
+                  <ImageZoom
+                    src={normalizeImageApiUrl(image)}
+                    alt={`${productName} - Vue ${index + 1} sur ${images.length}`}
+                    className="h-full w-full object-cover select-none"
+                  />
+                </div>
+              ))}
+            </div>
+            <div className="mt-2 flex justify-center gap-1.5" aria-hidden>
+              {images.map((_, index) => (
+                <span
+                  key={index}
+                  className={cn(
+                    'h-1.5 rounded-full transition-all duration-200',
+                    selectedImage === index ? 'w-5 bg-secondary' : 'w-1.5 bg-neutral-support',
+                  )}
                 />
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-          <div className="mt-2 flex justify-center gap-1.5" aria-hidden>
-            {images.map((_, index) => (
-              <span
-                key={index}
-                className={cn(
-                  'h-1.5 rounded-full transition-all duration-200',
-                  selectedImage === index ? 'w-5 bg-secondary' : 'w-1.5 bg-neutral-support',
-                )}
-              />
-            ))}
+
+          {/* Desktop : image principale + swipe discret */}
+          <div
+            className="relative hidden aspect-square overflow-hidden rounded-lg bg-neutral-light md:block"
+            onTouchStart={onTouchStart}
+            onTouchMove={onTouchMove}
+            onTouchEnd={onTouchEnd}
+          >
+            <ImageZoom
+              src={normalizeImageApiUrl(images[selectedImage])}
+              alt={`${productName} - Vue ${selectedImage + 1} sur ${images.length}`}
+              className="h-full w-full object-cover select-none"
+            />
           </div>
         </div>
       )}
@@ -250,22 +267,6 @@ export function ProductGallery({ images, productName, onImageChange, selectedInd
           <ImageZoom
             src={normalizeImageApiUrl(images[0])}
             alt={`${productName} - Photo`}
-            className="h-full w-full object-cover select-none"
-          />
-        </div>
-      )}
-
-      {/* Desktop : image principale + swipe discret si plusieurs images */}
-      {images.length > 1 && (
-        <div
-          className="relative hidden aspect-square overflow-hidden rounded-lg bg-neutral-light md:block"
-          onTouchStart={onTouchStart}
-          onTouchMove={onTouchMove}
-          onTouchEnd={onTouchEnd}
-        >
-          <ImageZoom
-            src={normalizeImageApiUrl(images[selectedImage])}
-            alt={`${productName} - Vue ${selectedImage + 1} sur ${images.length}`}
             className="h-full w-full object-cover select-none"
           />
         </div>
@@ -331,6 +332,9 @@ export function ProductGallery({ images, productName, onImageChange, selectedInd
           )}
         </div>
       )}
+
+      {/* Sur lg : étire la colonne pour égaler la hauteur avec la carte produit (grille align-items: stretch) */}
+      <div className="hidden min-h-0 flex-1 lg:block" aria-hidden />
     </div>
   );
 }

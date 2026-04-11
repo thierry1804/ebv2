@@ -202,6 +202,10 @@ export default function AdminProducts() {
   const { categories } = useCategories();
   const hasLoadedProductsRef = useRef(false);
   const [products, setProducts] = useState<Product[]>([]);
+  /** Produits dont au moins une ligne `product_variants` a stock > 0 (liste admin). */
+  const [productIdsWithVariantStock, setProductIdsWithVariantStock] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isOffcanvasOpen, setIsOffcanvasOpen] = useState(false);
@@ -464,6 +468,7 @@ export default function AdminProducts() {
         logPostgrestLikeError('loadProducts · erreur Supabase', error);
         console.warn(`${ADMIN_LOG} loadProducts · liste vide (erreur ci-dessus)`);
         setProducts([]);
+        setProductIdsWithVariantStock(new Set());
       } else {
         // Adapter les données de Supabase au format Product
         const adaptedProducts = (data || []).map((p: any) => {
@@ -531,6 +536,26 @@ export default function AdminProducts() {
           };
         });
         setProducts(adaptedProducts);
+
+        try {
+          const { data: pvData, error: pvError } = await supabase
+            .from('product_variants')
+            .select('product_id, stock');
+          if (pvError) {
+            console.warn(`${ADMIN_LOG} loadProducts · product_variants`, pvError);
+            setProductIdsWithVariantStock(new Set());
+          } else {
+            const withStock = new Set<string>();
+            for (const row of pvData || []) {
+              if (Number(row.stock) > 0) withStock.add(row.product_id as string);
+            }
+            setProductIdsWithVariantStock(withStock);
+          }
+        } catch (pvErr) {
+          console.warn(`${ADMIN_LOG} loadProducts · product_variants exception`, pvErr);
+          setProductIdsWithVariantStock(new Set());
+        }
+
         console.log(`${ADMIN_LOG} loadProducts · OK`, { count: adaptedProducts.length });
       }
     } catch (error: any) {
@@ -544,6 +569,7 @@ export default function AdminProducts() {
         setLoadError('Erreur lors du chargement des produits.');
       }
       toast.error('Erreur lors du chargement des produits');
+      setProductIdsWithVariantStock(new Set());
     } finally {
       setIsLoading(false);
     }
@@ -1709,15 +1735,21 @@ export default function AdminProducts() {
                     </div>
                   </td>
                   <td className="px-6 py-4">
-                    <span
-                      className={`px-2 py-1 text-xs rounded-full ${
-                        product.stock > 0
-                          ? 'bg-green-100 text-green-800'
-                          : 'bg-red-100 text-red-800'
-                      }`}
-                    >
-                      {product.stock} en stock
-                    </span>
+                    {product.hasVariants && productIdsWithVariantStock.has(product.id) ? (
+                      <span className="rounded-full bg-green-100 px-2 py-1 text-xs text-green-800">
+                        Disponible
+                      </span>
+                    ) : (
+                      <span
+                        className={`rounded-full px-2 py-1 text-xs ${
+                          product.stock > 0
+                            ? 'bg-green-100 text-green-800'
+                            : 'bg-red-100 text-red-800'
+                        }`}
+                      >
+                        {product.stock} en stock
+                      </span>
+                    )}
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-600 whitespace-nowrap">
                     {product.createdAt
