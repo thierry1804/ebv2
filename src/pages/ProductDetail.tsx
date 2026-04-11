@@ -506,7 +506,7 @@ export default function ProductDetail() {
       <div className="grid grid-cols-1 gap-12 lg:grid-cols-2 lg:items-stretch mb-1">
         {/* Galerie */}
         <div className="min-w-0 lg:flex lg:h-full lg:min-h-0 lg:flex-col">
-          <div className="min-h-0 w-full lg:flex lg:flex-1 lg:flex-col">
+          <div className="min-h-0 min-w-0 w-full lg:flex lg:flex-1 lg:flex-col">
           <ProductGallery
             images={galleryImages}
             productName={product.name}
@@ -824,9 +824,10 @@ export default function ProductDetail() {
         />
       </div>
 
-      {/* Onglets */}
-      <div className="border-t border-neutral-support pt-6">
-        <div className="flex gap-4 mb-6 border-b border-neutral-support">
+      {/* Onglets — défilement horizontal sur mobile (libellés longs) sans élargir la page */}
+      <div className="min-w-0 max-w-full border-t border-neutral-support pt-6">
+        <div className="scrollbar-tabs-h -mx-1 mb-6 max-w-full min-w-0 overflow-x-auto overscroll-x-contain border-b border-neutral-support sm:mx-0">
+          <div className="flex w-max gap-2 sm:gap-4">
           {[
             { id: 'description', label: 'Description' },
             { id: 'composition', label: 'Composition & Entretien' },
@@ -836,16 +837,19 @@ export default function ProductDetail() {
           ].map((tab) => (
             <button
               key={tab.id}
+              type="button"
               onClick={() => setActiveTab(tab.id as any)}
-              className={`pb-3 px-2 font-medium transition-colors ${
+              className={cn(
+                'shrink-0 whitespace-nowrap px-2 pb-3 text-sm font-medium transition-colors sm:text-base',
                 activeTab === tab.id
-                  ? 'text-secondary border-b-2 border-secondary'
-                  : 'text-text-dark/80 hover:text-secondary'
-              }`}
+                  ? 'border-b-2 border-secondary text-secondary'
+                  : 'border-b-2 border-transparent text-text-dark/80 hover:text-secondary'
+              )}
             >
               {tab.label}
             </button>
           ))}
+          </div>
         </div>
 
         <div className="text-text-dark/80">

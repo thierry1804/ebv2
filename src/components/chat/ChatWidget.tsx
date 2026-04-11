@@ -108,7 +108,11 @@ export function ChatWidget({ productId, productName, productImage }: ChatWidgetP
       {!isOpen && (
         <button
           onClick={() => setIsOpen(true)}
-          className="fixed bottom-6 right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-secondary text-white shadow-lg transition-transform hover:scale-110 active:scale-95"
+          className="fixed z-50 flex h-14 w-14 items-center justify-center rounded-full bg-secondary text-white shadow-lg transition-transform hover:scale-110 active:scale-95"
+          style={{
+            bottom: 'max(1.5rem, env(safe-area-inset-bottom, 0px))',
+            right: 'max(1.5rem, env(safe-area-inset-right, 0px))',
+          }}
           aria-label="Ouvrir le chat"
         >
           <MessageCircle size={26} />
@@ -122,7 +126,7 @@ export function ChatWidget({ productId, productName, productImage }: ChatWidgetP
 
       {/* Fenêtre de chat */}
       {isOpen && (
-        <div className="fixed bottom-4 right-4 z-50 flex h-[500px] w-[360px] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl sm:bottom-6 sm:right-6">
+        <div className="fixed bottom-4 left-4 right-4 z-50 mx-auto flex h-[min(500px,70dvh)] w-full max-w-[360px] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl sm:bottom-6 sm:left-auto sm:right-6 sm:mx-0 sm:h-[500px] sm:w-[360px]">
           {/* En-tête */}
           <div className="flex shrink-0 items-center gap-3 bg-secondary px-4 py-3 text-white">
             {productImage && (

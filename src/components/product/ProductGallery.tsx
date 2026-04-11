@@ -202,16 +202,16 @@ export function ProductGallery({ images, productName, onImageChange, selectedInd
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-4 lg:min-h-0">
+    <div className="flex min-h-0 min-w-0 w-full flex-1 flex-col gap-4 lg:min-h-0">
       {/* Plusieurs images : un seul bloc racine pour éviter space-y sur l’image desktop (alignement avec la colonne produit) */}
       {images.length > 1 && (
         <div>
           {/* Mobile : bandeau horizontal type galerie Android (scroll + snap) */}
-          <div className="md:hidden">
+          <div className="min-w-0 max-w-full md:hidden">
             <div
               ref={mobileCarouselRef}
               className={cn(
-                'flex aspect-square w-full touch-pan-x snap-x snap-mandatory overflow-x-auto scroll-smooth rounded-lg bg-neutral-light',
+                'flex aspect-square w-full min-w-0 touch-pan-x snap-x snap-mandatory overflow-x-auto scroll-smooth rounded-lg bg-neutral-light',
                 '[-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
                 'overscroll-x-contain',
               )}
@@ -273,7 +273,7 @@ export function ProductGallery({ images, productName, onImageChange, selectedInd
       )}
 
       {images.length > 1 && (
-        <div className="relative" role="group" aria-label="Galerie d'images du produit">
+        <div className="relative min-w-0 max-w-full" role="group" aria-label="Galerie d'images du produit">
           {canScrollLeft && (
             <button
               type="button"
@@ -287,7 +287,7 @@ export function ProductGallery({ images, productName, onImageChange, selectedInd
           )}
           <div
             ref={scrollContainerRef}
-            className="scrollbar-hide overflow-x-auto"
+            className="scrollbar-hide min-w-0 max-w-full overflow-x-auto"
             role="list"
             aria-label="Miniatures des images"
           >
