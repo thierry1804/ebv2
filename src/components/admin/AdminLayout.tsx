@@ -131,7 +131,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
       )}
 
       {/* Colonne principale : scroll unique ici (évite double barre body + menu) */}
-      <div className="flex h-full min-h-0 flex-col lg:pl-64">
+      <div className="flex h-full min-h-0 min-w-0 flex-col lg:pl-64">
         <AdminMainScrollContext.Provider value={mainScrollRef}>
           <header className="z-30 shrink-0 border-b border-gray-100 bg-white shadow-sm">
             <div className="flex items-center justify-between px-6 py-4">
@@ -150,7 +150,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
 
           <main
             ref={mainScrollRef}
-            className="scrollbar-thin min-h-0 flex-1 overflow-y-auto overflow-x-auto p-6"
+            className="scrollbar-thin min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain p-6 [touch-action:pan-y]"
           >
             {children}
           </main>

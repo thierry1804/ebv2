@@ -1812,10 +1812,14 @@ export default function AdminProducts() {
         </Button>
       </div>
 
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-        <table className="w-full">
+      <div className="min-w-0 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
+        <div className="overflow-x-auto overscroll-x-contain">
+          <table className="w-full min-w-max">
           <thead className="bg-gray-50">
             <tr>
+              <th className="w-16 px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase sm:w-20 sm:px-4">
+                Photo
+              </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                 Nom
               </th>
@@ -1842,7 +1846,7 @@ export default function AdminProducts() {
           <tbody className="divide-y divide-gray-200">
             {products.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-6 py-8 text-center text-gray-500">
+                <td colSpan={8} className="px-6 py-8 text-center text-gray-500">
                   {loadError ?? 'Aucun produit trouvé.'}
                 </td>
               </tr>
@@ -1857,8 +1861,30 @@ export default function AdminProducts() {
                     isDeleting ? 'bg-amber-50/90 opacity-75 pointer-events-none' : ''
                   }`}
                 >
+                  <td className="w-16 px-3 py-4 sm:w-20 sm:px-4">
+                    <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-lg border border-gray-200 bg-gray-100 sm:h-14 sm:w-14">
+                      {product.images?.[0]?.trim() ? (
+                        <img
+                          src={product.images[0].trim()}
+                          alt={`Aperçu ${product.name}`}
+                          className="h-full w-full object-cover"
+                          loading="lazy"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).style.display = 'none';
+                            (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden');
+                          }}
+                        />
+                      ) : null}
+                      <div
+                        className={`flex h-full w-full items-center justify-center text-gray-400 ${product.images?.[0]?.trim() ? 'hidden' : ''}`}
+                        aria-hidden
+                      >
+                        <ImageIcon className="h-6 w-6" aria-hidden />
+                      </div>
+                    </div>
+                  </td>
                   <td className="px-6 py-4">
-                    <div className="font-medium text-text-dark flex items-center gap-2">
+                    <div className="flex items-center gap-2 font-medium text-text-dark">
                       {isDeleting && (
                         <Loader2
                           className="shrink-0 animate-spin text-amber-700"
@@ -1946,7 +1972,7 @@ export default function AdminProducts() {
                         type="button"
                         onClick={() => handleDelete(product.id)}
                         disabled={isDeleting}
-                        className="p-2 text-red-600 hover:text-red-900 disabled:opacity-40 disabled:cursor-not-allowed min-w-[42px] min-h-[42px] inline-flex items-center justify-center"
+                        className="inline-flex min-h-[42px] min-w-[42px] items-center justify-center p-2 text-red-600 hover:text-red-900 disabled:cursor-not-allowed disabled:opacity-40"
                         title={isDeleting ? 'Suppression…' : 'Supprimer'}
                         aria-busy={isDeleting}
                         aria-label={isDeleting ? 'Suppression en cours' : 'Supprimer le produit'}
@@ -1965,6 +1991,7 @@ export default function AdminProducts() {
             )}
           </tbody>
         </table>
+        </div>
       </div>
 
       <Offcanvas

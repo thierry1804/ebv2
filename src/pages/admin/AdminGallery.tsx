@@ -1015,8 +1015,9 @@ export default function AdminGallery() {
               </div>
             ) : (
               /* ============= Vue liste ============= */
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-                <table className="w-full">
+              <div className="min-w-0 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
+                <div className="overflow-x-auto overscroll-x-contain">
+                <table className="w-full min-w-max">
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr>
                       <th className="px-4 py-3 w-10">
@@ -1085,6 +1086,7 @@ export default function AdminGallery() {
                     })}
                   </tbody>
                 </table>
+                </div>
               </div>
             )}
           {galleryScrubberVisible && displayedGalleryImages.length > 0 && mainScrollRef && (
