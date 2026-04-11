@@ -21,6 +21,7 @@ import { useProductVariants } from '../hooks/useProductVariants';
 import { areImageUrlsSameAsset, normalizeImageApiUrl, normalizeProductImageUrls } from '../lib/imageApi';
 import { cn } from '../utils/cn';
 import { ProductVariant, getVariantDisplayName } from '../types/variants';
+import { ChatWidget } from '../components/chat/ChatWidget';
 
 export default function ProductDetail() {
   const { id } = useParams<{ id: string }>();
@@ -942,6 +943,13 @@ export default function ProductDetail() {
         </section>
       )}
     </div>
+
+    {/* Chat en temps réel */}
+    <ChatWidget
+      productId={product.id}
+      productName={product.name}
+      productImage={product.images?.[0] ? normalizeImageApiUrl(product.images[0]) : null}
+    />
     </>
   );
 }

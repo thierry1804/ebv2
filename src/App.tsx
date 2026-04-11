@@ -44,6 +44,7 @@ const AdminOrders = lazy(() => import('./pages/admin/AdminOrders'));
 const AdminSiteSettings = lazy(() => import('./pages/admin/AdminSiteSettings'));
 const AdminGallery = lazy(() => import('./pages/admin/AdminGallery'));
 const AdminNewsletter = lazy(() => import('./pages/admin/AdminNewsletter'));
+const AdminChat = lazy(() => import('./pages/admin/AdminChat'));
 
 // Composant de chargement (pour les pages lazy-load)
 const LoadingFallback = () => <PageLoading />;
@@ -125,6 +126,7 @@ function App() {
                     <Route path="parametres-site" element={<AdminSiteSettings />} />
                     <Route path="galerie" element={<AdminGallery />} />
                     <Route path="newsletter" element={<AdminNewsletter />} />
+                    <Route path="chat" element={<AdminChat />} />
                   </Route>
                 </Route>
               </Routes>

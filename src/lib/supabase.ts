@@ -3,10 +3,15 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
+/** Utilisé par le chat et autres modules pour éviter des appels réseau vers le client « placeholder ». */
+export const isSupabaseConfigured = Boolean(
+  String(supabaseUrl).trim() && String(supabaseAnonKey).trim()
+);
+
 // Créer un client Supabase uniquement si les variables sont définies
 let supabase: SupabaseClient;
 
-if (!supabaseUrl || !supabaseAnonKey) {
+if (!isSupabaseConfigured) {
   console.error(
     '❌ Les variables d\'environnement Supabase ne sont pas définies.\n' +
     '📝 Veuillez configurer VITE_SUPABASE_URL et VITE_SUPABASE_ANON_KEY dans les secrets GitHub Actions.\n' +
