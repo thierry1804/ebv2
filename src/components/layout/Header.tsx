@@ -12,6 +12,61 @@ import { HeaderLogoConfig, PromotionalBannerConfig } from '../../types';
 import { useCategories } from '../../hooks/useCategories';
 import { useProducts } from '../../hooks/useProducts';
 import { sortCategoriesByProductCount } from '../../lib/sortCategoriesByProductCount';
+import { buildFirstProductImageByCategoryName } from '../../lib/firstProductImageByCategory';
+import { normalizeImageApiUrl } from '../../lib/imageApi';
+
+/** Vignette méga-menu : image catégorie, sinon 1re image du 1er produit, sinon fond neutre. */
+function MegaMenuCategoryImage({
+  categoryName,
+  categoryImageUrl,
+  fallbackProductImageUrl,
+}: {
+  categoryName: string;
+  categoryImageUrl?: string;
+  fallbackProductImageUrl?: string;
+}) {
+  const cat = categoryImageUrl?.trim() || undefined;
+  const initial = cat && cat.length > 0 ? cat : fallbackProductImageUrl ?? null;
+  const [displaySrc, setDisplaySrc] = useState<string | null>(initial);
+
+  useEffect(() => {
+    const c = categoryImageUrl?.trim() || undefined;
+    setDisplaySrc(c && c.length > 0 ? c : fallbackProductImageUrl ?? null);
+  }, [categoryImageUrl, fallbackProductImageUrl]);
+
+  const handleImgError = () => {
+    setDisplaySrc((prev) => {
+      const c = categoryImageUrl?.trim() || undefined;
+      if (prev && c && prev === c && fallbackProductImageUrl && prev !== fallbackProductImageUrl) {
+        return fallbackProductImageUrl;
+      }
+      return null;
+    });
+  };
+
+  if (!displaySrc) {
+    return (
+      <div
+        className="flex h-full w-full items-center justify-center bg-gradient-to-br from-gray-100 to-gray-200 text-center"
+        aria-hidden
+      >
+        <span className="line-clamp-2 px-2 text-xs font-medium text-gray-400">{categoryName}</span>
+      </div>
+    );
+  }
+
+  return (
+    <img
+      key={displaySrc}
+      src={displaySrc}
+      alt=""
+      className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-110"
+      loading="lazy"
+      decoding="async"
+      onError={handleImgError}
+    />
+  );
+}
 
 export function Header() {
   const { categories } = useCategories();
@@ -20,6 +75,14 @@ export function Header() {
     () => sortCategoriesByProductCount(categories, products),
     [categories, products]
   );
+  const firstProductImageByCategory = useMemo(() => {
+    const raw = buildFirstProductImageByCategoryName(products);
+    const m = new Map<string, string>();
+    for (const [name, url] of raw.entries()) {
+      m.set(name, normalizeImageApiUrl(url));
+    }
+    return m;
+  }, [products]);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isMegaMenuOpen, setIsMegaMenuOpen] = useState(false);
   const [megaMenuTopPx, setMegaMenuTopPx] = useState(0);
@@ -207,7 +270,8 @@ export function Header() {
                     aria-label="Catégories de la boutique"
                     onMouseEnter={openMegaMenu}
                   >
-                    <div className="max-h-[min(75vh,calc(100dvh-5.5rem))] overflow-y-auto overscroll-contain rounded-2xl border border-gray-100 bg-white p-8 shadow-2xl animate-in fade-in slide-in-from-top-2 duration-200">
+                    <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-2xl animate-in fade-in slide-in-from-top-2 duration-200">
+                      <div className="mega-menu-scroll max-h-[min(75vh,calc(100dvh-5.5rem))] overflow-y-auto overscroll-contain p-8">
                     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
                       {categoriesForDisplay.map((category) => (
                         <Link
@@ -217,10 +281,12 @@ export function Header() {
                           onClick={() => setIsMegaMenuOpen(false)}
                         >
                           <div className="aspect-[4/3] overflow-hidden rounded-t-xl bg-gradient-to-br from-gray-100 to-gray-200">
-                            <img
-                              src={category.image}
-                              alt={category.name}
-                              className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500 ease-out"
+                            <MegaMenuCategoryImage
+                              categoryName={category.name}
+                              categoryImageUrl={
+                                category.image?.trim() ? normalizeImageApiUrl(category.image.trim()) : undefined
+                              }
+                              fallbackProductImageUrl={firstProductImageByCategory.get(category.name)}
                             />
                             <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                           </div>
@@ -258,6 +324,7 @@ export function Header() {
                         Aucune catégorie disponible
                       </div>
                     )}
+                      </div>
                     </div>
                   </div>
                 )}
