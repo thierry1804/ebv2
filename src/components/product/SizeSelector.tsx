@@ -5,6 +5,8 @@ interface SizeSelectorProps {
   selectedSize: string | null;
   onSelectSize: (size: string) => void;
   availableSizes?: string[];
+  /** Libellé du champ (ex. « Pointure » pour les chaussures). */
+  label?: string;
 }
 
 export function SizeSelector({
@@ -12,6 +14,7 @@ export function SizeSelector({
   selectedSize,
   onSelectSize,
   availableSizes,
+  label = 'Taille',
 }: SizeSelectorProps) {
   const isAvailable = (size: string) => {
     if (!availableSizes) return true;
@@ -20,7 +23,7 @@ export function SizeSelector({
 
   return (
     <div>
-      <label className="block text-sm font-medium text-text-dark mb-2">Taille</label>
+      <label className="block text-sm font-medium text-text-dark mb-2">{label}</label>
       <div className="flex flex-wrap gap-2">
         {sizes.map((size) => {
           const available = isAvailable(size);
@@ -36,7 +39,7 @@ export function SizeSelector({
                   : 'border-neutral-support text-text-dark hover:border-secondary hover:bg-secondary/10',
                 !available && 'opacity-50 cursor-not-allowed line-through'
               )}
-              aria-label={`Taille ${size}${!available ? ' - Non disponible' : selectedSize === size ? ' - Sélectionnée' : ''}`}
+              aria-label={`${label} ${size}${!available ? ' - Non disponible' : selectedSize === size ? ' - Sélectionnée' : ''}`}
               aria-pressed={selectedSize === size}
             >
               {size}

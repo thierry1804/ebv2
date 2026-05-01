@@ -335,6 +335,8 @@ export default function AdminProducts() {
     inStock: boolean;
     price: string; // vide = prix du produit
     colors: Array<{ name: string; hex: string }>; // couleurs détectées pour cette image
+    /** Tailles pour cette variante-image (texte « S, M, L », comme le champ produit) */
+    sizes: string;
   }
   interface GalleryFolder {
     id: string;
@@ -710,6 +712,7 @@ export default function AdminProducts() {
           inStock: true,
           price: '',
           colors: [],
+          sizes: '',
         });
       }
       if (selections.length === 0) {
@@ -844,6 +847,7 @@ export default function AdminProducts() {
         inStock: true,
         price: '',
         colors: [],
+        sizes: '',
       }))
     );
     setIsOffcanvasOpen(true);
@@ -930,6 +934,7 @@ export default function AdminProducts() {
             : true,
           price: matchingVariant?.price?.toString() || '',
           colors: matchingVariant?.colors?.map(c => ({ name: c.name, hex: c.hex })) || [],
+          sizes: matchingVariant?.sizes?.join(', ') ?? '',
         })
       );
       console.log(
@@ -1388,6 +1393,7 @@ export default function AdminProducts() {
         inStock: true,
         price: '',
         colors: [],
+        sizes: '',
       }];
     });
   };
@@ -1440,6 +1446,7 @@ export default function AdminProducts() {
       if (!sel.isVariant) continue;
       const priceVal = parseOptionalGalleryVariantPrice(sel.price);
       const colorsJson = sel.colors.map(c => JSON.stringify({ name: c.name, hex: c.hex }));
+      const sizesArr = sel.sizes.split(',').map((s) => s.trim()).filter(Boolean);
       const variantPayload = {
         product_id: productId,
         sku: null,
@@ -1453,6 +1460,7 @@ export default function AdminProducts() {
         is_available: sel.inStock,
         images: [sel.image_url],
         colors: colorsJson,
+        sizes: sizesArr,
         position: galleryIndex,
       };
       console.log(`${ADMIN_LOG} saveGalleryImageVariants · insert idx=${galleryIndex}`, { priceRaw: sel.price, priceParsed: priceVal, inStock: sel.inStock, colors: sel.colors.length });
@@ -2608,7 +2616,8 @@ export default function AdminProducts() {
               <div className="mt-4 space-y-3">
                 <label className="block text-xs text-gray-600 leading-relaxed">
                   Images sélectionnées ({selectedGalleryImages.length}). Cochez « Variante (achetable) » pour
-                  chaque modèle en vente (stock / prix) ; laissez « Galerie seulement » pour une simple vue.
+                  chaque modèle en vente (stock / prix / tailles éventuelles) ; laissez « Galerie seulement »
+                  pour une simple vue.
                 </label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {selectedGalleryImages.map((sel, index) => (
@@ -2727,6 +2736,26 @@ export default function AdminProducts() {
                                 }}
                                 placeholder={formData.price || 'base'}
                                 aria-label={`Prix MGA, image ${index + 1}`}
+                                className="min-h-[2.25rem] w-full min-w-0 rounded border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-secondary"
+                              />
+                            </div>
+                            <div className="flex min-w-0 flex-col gap-1">
+                              <label className="shrink-0 text-xs text-gray-500">
+                                Tailles (virgules, optionnel) :
+                              </label>
+                              <input
+                                type="text"
+                                value={sel.sizes}
+                                onChange={(e) => {
+                                  galleryUserEditedRef.current = true;
+                                  setSelectedGalleryImages((prev) =>
+                                    prev.map((s, i) =>
+                                      i === index ? { ...s, sizes: e.target.value } : s,
+                                    ),
+                                  );
+                                }}
+                                placeholder="S, M, L ou vide = tailles du produit"
+                                aria-label={`Tailles variante, image ${index + 1}`}
                                 className="min-h-[2.25rem] w-full min-w-0 rounded border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-secondary"
                               />
                             </div>

@@ -36,6 +36,8 @@ export interface ProductVariant {
   isAvailable: boolean;
   images?: string[]; // Tableau d'images (comme pour les produits)
   colors?: ColorWithHex[]; // Couleurs associées à cette variante
+  /** Tailles disponibles pour cette variante (variantes par image, etc.) */
+  sizes?: string[];
   position: number;
   options: SelectedVariantOption[]; // Les options sélectionnées
   createdAt: string;
@@ -109,6 +111,7 @@ export interface DatabaseProductVariant {
   is_available: boolean;
   images: string[] | null; // Tableau d'images au lieu de image_url
   colors: string[] | null; // Couleurs JSON sérialisées (ex: '{"name":"Marron","hex":"#8B4513"}')
+  sizes: string[] | null;
   position: number;
   created_at: string;
   updated_at: string;
@@ -198,6 +201,12 @@ export function dbToProductVariant(
     if (colors.length === 0) colors = undefined;
   }
 
+  let sizes: string[] | undefined;
+  if (Array.isArray(db.sizes) && db.sizes.length > 0) {
+    sizes = db.sizes.map((s) => String(s).trim()).filter(Boolean);
+    if (sizes.length === 0) sizes = undefined;
+  }
+
   return {
     id: db.id,
     productId: db.product_id,
@@ -211,6 +220,7 @@ export function dbToProductVariant(
     isAvailable: db.is_available,
     images: Array.isArray(db.images) ? db.images : (db.images ? [db.images] : undefined),
     colors,
+    sizes,
     position: db.position,
     options,
     createdAt: db.created_at,

@@ -20,6 +20,7 @@ import { analytics } from '../hooks/useGoogleAnalytics';
 import { useProductVariants } from '../hooks/useProductVariants';
 import { areImageUrlsSameAsset, normalizeImageApiUrl, normalizeProductImageUrls } from '../lib/imageApi';
 import { cn } from '../utils/cn';
+import { normalizeSizeList, variantOptionIsDedicatedSize } from '../lib/sizes';
 import { ProductVariant, getVariantDisplayName } from '../types/variants';
 import { ChatWidget } from '../components/chat/ChatWidget';
 
@@ -174,21 +175,27 @@ export default function ProductDetail() {
       (isImageVariants || (!usesVariantOnlyGallery && (product?.images?.length ?? 0) > 1))
   );
 
+  /** Prix catalogue « après promo produit » — utilisé quand une ligne variante n’a pas de prix propre (price null). */
+  const effectiveCatalogPrice = useMemo(() => {
+    if (!product) return 0;
+    return product.salePrice || product.price;
+  }, [product]);
+
   const displayPrice = useMemo(() => {
     if (!product) return 0;
     if (hasVariants && selectedVariant) {
-      return selectedVariant.price ?? product.price;
+      return selectedVariant.price ?? effectiveCatalogPrice;
     }
-    return product.salePrice || product.price;
-  }, [product, hasVariants, selectedVariant]);
+    return effectiveCatalogPrice;
+  }, [product, hasVariants, selectedVariant, effectiveCatalogPrice]);
 
   const priceRange = useMemo(() => {
     if (!product) return { min: 0, max: 0 };
     if (hasVariants) {
-      return getPriceRange(product.price);
+      return getPriceRange(effectiveCatalogPrice);
     }
     return { min: product.price, max: product.price };
-  }, [product, hasVariants, getPriceRange]);
+  }, [product, hasVariants, getPriceRange, effectiveCatalogPrice]);
 
   const currentStock = useMemo(() => {
     if (!product) return 0;
@@ -278,17 +285,17 @@ export default function ProductDetail() {
     setQuantity((q) => Math.min(Math.max(1, q), Math.max(currentStock, 1)));
   }, [currentStock]);
 
-  // Auto-sélectionner la première couleur de la variante (ou du produit sans variantes)
+  // Auto-sélectionner la première couleur de la variante, sinon couleur principale du produit
   useEffect(() => {
     const variantColors = selectedVariant?.colors;
     if (variantColors && variantColors.length > 0) {
       setSelectedColor(variantColors[0].name);
-    } else if (!hasVariants && product?.colors && product.colors.length > 0) {
+    } else if (product?.colors && product.colors.length > 0) {
       const first = product.colors[0];
       const name = typeof first === 'string' ? first : first.name;
       if (name) setSelectedColor(name);
     }
-  }, [selectedVariant?.id, selectedVariant?.colors, hasVariants, product?.colors]);
+  }, [selectedVariant?.id, selectedVariant?.colors, product?.colors]);
 
   // Pour les variantes-images : est-ce que la variante active est en stock ?
   // null = l'image active n'est pas une variante (galerie seulement)
@@ -335,6 +342,45 @@ export default function ProductDetail() {
     selectedColor,
   ]);
 
+  /** Nom d’option réservé au choix taille/pointure (mode variantes à options — pas sous-chaîne). */
+  const variantOptionHandlesSizes = useMemo(
+    () => variantOptions.some((o) => variantOptionIsDedicatedSize(o.name)),
+    [variantOptions],
+  );
+
+  /** Source variante pour les tailles : en mode « par photo », toujours la ligne liée à l’image active. */
+  const variantForSizes = isImageVariants ? imageVariant : selectedVariant;
+
+  /** Tailles affichées : d’abord la ligne variante (product_variants.sizes), puis le produit.
+   *  Les tailles présentes sur la variante ne sont jamais masquées par une option « Taille » en doublon.
+   *  Masquage du fallback produit uniquement en mode options classiques quand une option Taille/Pointure existe. */
+  const sizeSelectorSizes = useMemo(() => {
+    if (!product) return [];
+
+    const fromVariant = normalizeSizeList(variantForSizes?.sizes);
+    if (fromVariant.length > 0) return fromVariant;
+
+    if (hasVariants && !isImageVariants && variantOptionHandlesSizes) return [];
+
+    return normalizeSizeList(product.sizes);
+  }, [
+    product,
+    hasVariants,
+    isImageVariants,
+    variantForSizes,
+    variantOptionHandlesSizes,
+  ]);
+
+  useEffect(() => {
+    setSelectedSize((prev) => {
+      if (!product) return null;
+      const list = sizeSelectorSizes;
+      if (list.length === 0) return null;
+      if (!prev) return prev;
+      return list.includes(prev) ? prev : null;
+    });
+  }, [product, sizeSelectorSizes, activeImageIndex]);
+
   if (!product) {
     return (
       <div className="container mx-auto px-4 py-16 text-center">
@@ -354,33 +400,61 @@ export default function ProductDetail() {
     .filter((p) => p.category === product.category && p.id !== product.id)
     .slice(0, 4);
 
+  const sizeFieldLabel = (() => {
+    const c = product.category?.toLowerCase() ?? '';
+    if (
+      c.includes('chauss') ||
+      c.includes('mule') ||
+      c.includes('sandale') ||
+      c.includes('basket') ||
+      c.includes('botte') ||
+      c.includes('espadrille') ||
+      c.includes('pointure')
+    ) {
+      return 'Pointure';
+    }
+    return 'Taille';
+  })();
+
   const handleAddToCart = () => {
     // Résoudre la couleur : couleur de la variante > couleur sélectionnée manuellement
     const variantColor = selectedVariant?.colors?.[0]?.name ?? null;
     const resolvedColor = variantColor || selectedColor;
 
-    // Vérifier la sélection de couleur uniquement pour les produits sans variantes
-    if (!hasVariants && !isImageVariants && product.colors && product.colors.length > 0 && !resolvedColor) {
+    // Couleur obligatoire : produits sans variantes ; ou variantes par photo sur une image non achetable (couleurs catalogue)
+    const colorRequiredNonVariant =
+      !hasVariants && !isImageVariants && product.colors && product.colors.length > 0;
+    const colorRequiredGalleryOnly =
+      isImageVariants && !imageVariant && product.colors && product.colors.length > 0;
+    if ((colorRequiredNonVariant || colorRequiredGalleryOnly) && !resolvedColor) {
       toast.error('Veuillez sélectionner une couleur');
       return;
     }
 
     // Pour les variantes-images
     if (isImageVariants) {
+      if (sizeSelectorSizes.length > 0 && !selectedSize) {
+        toast.error(`Veuillez sélectionner une ${sizeFieldLabel.toLowerCase()}`);
+        return;
+      }
       if (imageVariant) {
         // L'image active correspond à une variante achetable
         if (!imageVariant.isAvailable || imageVariant.stock === 0) {
           toast.error('Ce modèle est en rupture de stock');
           return;
         }
+        const variantOpts = [
+          { name: 'Modèle', value: `Image ${activeImageIndex + 1}` },
+          ...(selectedSize ? [{ name: 'Taille', value: selectedSize }] : []),
+        ];
         addItem(
           product,
-          null,
+          selectedSize,
           resolvedColor,
           quantity,
           imageVariant.id,
           imageVariant.sku,
-          [{ name: 'Modèle', value: `Image ${activeImageIndex + 1}` }],
+          variantOpts,
           displayPrice,
           activeGalleryImageUrl || imageVariant.images?.[0] || product.images?.[0]
         );
@@ -413,14 +487,24 @@ export default function ProductDetail() {
         return;
       }
 
+      if (sizeSelectorSizes.length > 0 && !selectedSize) {
+        toast.error(`Veuillez sélectionner une ${sizeFieldLabel.toLowerCase()}`);
+        return;
+      }
+
+      const variantOpts = [
+        ...selectedVariant.options.map((o) => ({ name: o.optionName, value: o.value })),
+        ...(selectedSize ? [{ name: sizeFieldLabel, value: selectedSize }] : []),
+      ];
+
       addItem(
         product,
-        null,
+        selectedSize,
         resolvedColor,
         quantity,
         selectedVariant.id,
         selectedVariant.sku,
-        selectedVariant.options.map(o => ({ name: o.optionName, value: o.value })),
+        variantOpts,
         displayPrice,
         activeGalleryImageUrl || selectedVariant.images?.[0] || product.images?.[0]
       );
@@ -433,7 +517,7 @@ export default function ProductDetail() {
     const hasSizes = product.sizes && product.sizes.length > 0;
 
     if (hasSizes && !selectedSize) {
-      toast.error('Veuillez sélectionner une taille');
+      toast.error(`Veuillez sélectionner une ${sizeFieldLabel.toLowerCase()}`);
       return;
     }
 
@@ -574,7 +658,7 @@ export default function ProductDetail() {
               </span>
             ) : (
               <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                {hasSale && !hasVariants && (
+                {hasSale && (
                   <span className="text-lg text-neutral-support line-through sm:text-xl">
                     {formatPrice(product.price)}
                   </span>
@@ -688,31 +772,33 @@ export default function ProductDetail() {
               </div>
             )}
 
-            {/* Sélecteur de taille (produits sans variantes uniquement) */}
-            {!hasVariants && product.sizes && product.sizes.length > 0 && (
+            {/* Sélecteur de taille : produits simples, ou variantes « par photo » (tailles produit ou par image). */}
+            {sizeSelectorSizes.length > 0 && (
               <div>
                 <SizeSelector
-                  sizes={product.sizes}
+                  sizes={sizeSelectorSizes}
                   selectedSize={selectedSize}
                   onSelectSize={setSelectedSize}
+                  label={sizeFieldLabel}
                 />
                 {selectedSize && (
                   <p className="mt-2 text-sm text-green-600 font-medium">
-                    ✓ Taille {selectedSize} sélectionnée
+                    ✓ {sizeFieldLabel} {selectedSize} sélectionnée
                   </p>
                 )}
               </div>
             )}
 
-            {/* Couleurs : variante sélectionnée > couleurs produit */}
+            {/* Couleurs : variante si présente, sinon couleurs catalogue (ex. image « galerie seule » en variantes par photo). */}
             {(() => {
               const variantColors = selectedVariant?.colors;
               const productColors = product.colors;
-              const colorsToShow = (variantColors && variantColors.length > 0)
-                ? variantColors
-                : (!hasVariants && productColors && productColors.length > 0)
-                  ? productColors
-                  : null;
+              const colorsToShow =
+                variantColors && variantColors.length > 0
+                  ? variantColors
+                  : productColors && productColors.length > 0
+                    ? productColors
+                    : null;
               if (!colorsToShow) return null;
               return (
                 <div>

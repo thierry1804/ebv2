@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import { useCategories } from './useCategories';
 import { getColorHex } from '../config/colors';
 import { normalizeProductImageUrls } from '../lib/imageApi';
+import { normalizeSizeList } from '../lib/sizes';
 
 export function useProducts() {
   const { categories, isLoading: categoriesLoading } = useCategories();
@@ -96,7 +97,7 @@ export function useProducts() {
             images: normalizeProductImageUrls(
               Array.isArray(p.images) ? p.images : p.image ? [p.image] : []
             ),
-            sizes: Array.isArray(p.sizes) ? p.sizes : [],
+            sizes: normalizeSizeList(p.sizes),
             colors: colors,
             description: p.description || '',
             composition: p.composition || '',

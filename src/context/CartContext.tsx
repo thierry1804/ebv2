@@ -193,9 +193,13 @@ export function CartProvider({ children }: { children: ReactNode }) {
     setItems((prevItems) => {
       // Recherche d'un article existant
       const existingItem = prevItems.find((item) => {
-        // Si on a une variante, comparer par variantId
+        // Si on a une variante, distinguer aussi taille / couleur (ex. même photo, tailles différentes)
         if (variantId) {
-          return item.variantId === variantId;
+          return (
+            item.variantId === variantId &&
+            item.size === size &&
+            item.color === color
+          );
         }
         // Sinon, comparer par produit + taille + couleur (ancien comportement)
         return (

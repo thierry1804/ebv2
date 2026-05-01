@@ -11,6 +11,7 @@ import {
 } from '../types/variants';
 import toast from 'react-hot-toast';
 import { normalizeProductImageUrls } from '../lib/imageApi';
+import { normalizeSizeList } from '../lib/sizes';
 import { ColorWithHex } from '../types/index';
 
 interface UseProductVariantsResult {
@@ -86,6 +87,7 @@ export function useProductVariants(productId: string | null): UseProductVariants
           is_available,
           images,
           colors,
+          sizes,
           position,
           created_at,
           updated_at,
@@ -160,6 +162,10 @@ export function useProductVariants(productId: string | null): UseProductVariants
           if (colors.length === 0) colors = undefined;
         }
 
+        const parsedSizes = normalizeSizeList(v.sizes);
+        const sizes: string[] | undefined =
+          parsedSizes.length > 0 ? parsedSizes : undefined;
+
         return {
           id: v.id,
           productId: v.product_id,
@@ -177,6 +183,7 @@ export function useProductVariants(productId: string | null): UseProductVariants
             return normalizeProductImageUrls(raw);
           })(),
           colors,
+          sizes,
           position: v.position,
           options: selectedOptions,
           createdAt: v.created_at,
